@@ -9,7 +9,7 @@ from os.path import dirname, join, abspath
 
 def talker():
     np.set_printoptions(threshold=sys.maxsize)
-    model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_sim.urdf",pinocchio.JointModelFreeFlyer())      
+    model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
     RFframe_id = model.getFrameId("R_Foot_Link")
@@ -36,6 +36,8 @@ def talker():
     for i in range(0, len(q)):
         q[i] = q_init[i]
 
+    modeldof = model.nq - 7
+
     qdot = pinocchio.utils.zero(model.nv)
     qddot = pinocchio.utils.zero(model.nv)
     qdot_z = pinocchio.utils.zero(model.nv)
@@ -43,6 +45,7 @@ def talker():
     pinocchio.forwardKinematics(model, data, q, qdot, qddot)
     pinocchio.updateFramePlacements(model,data)
     pinocchio.computeJointJacobians(model, data, q)
+    pinocchio.computeMinverse(model, data, q)
 
     LF_tran = data.oMi[7].translation
     RF_tran = data.oMi[13].translation
@@ -52,23 +55,29 @@ def talker():
     PELV_tran = data.oMi[1].translation
     PELV_rot = data.oMi[1].rotation
 
-
-    print(RF_tran)
-    print(PELV_tran)
-
     pinocchio.crba(model, data, q)
     pinocchio.computeCoriolisMatrix(model, data, q, qdot)
     pinocchio.rnea(model, data, q, qdot_z, qddot_z)
 
 
     contactState = 1
+    contactnum = 0
 
     if contactState == 1:
         print("double support")
+        contactnum = 2
+        robotJac = np.zeros((2 * 6, model.nv))
+        robotIc = np.zeros((2 * 6, 2 * 6))
     elif contactState == 2:
         print("RF support")
+        contactnum = 1
+        robotJac = np.zeros((1 * 6, model.nv))
+        robotIc = np.zeros((1 * 6, 1 * 6))
     else:
         print("LF support")    
+        contactnum = 1
+        robotJac = np.zeros((1 * 6, model.nv))
+        robotIc = np.zeros((1 * 6, 1 * 6))
 
     #COR_slice = data.C[:6:39]
     #M_slice = data.M[:6:39]
@@ -78,17 +87,25 @@ def talker():
     M = data.M
     COR = data.C
     G = data.tau
+    Minv = data.Minv
 
     LF_j = pinocchio.computeFrameJacobian(model,data,q,LFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
     RF_j = pinocchio.computeFrameJacobian(model,data,q,RFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
-
-    aa = model.getFrameId("LF_contact")
-    print(aa)
-
     LF_cj = pinocchio.computeFrameJacobian(model,data,q,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
     RF_cj = pinocchio.computeFrameJacobian(model,data,q,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
 
-    print(LF_cj)
+    for i in range(0, contactnum):
+        if i == 0:
+            robotJac[0:6,0:model.nv] = LF_cj
+        elif i == 1:
+            robotJac[6:12,0:model.nv] = RF_cj
+        print(i)
+
+    robotLambdac = np.linalg.inv(np.matmul(np.matmul(robotJac,Minv),np.transpose(robotJac)))
+    robotJcinvT = np.matmul(np.matmul(robotLambdac, robotJac),Minv)
+    robotNc = np.subtract(np.identity(model.nv),np.matmul(np.transpose(robotJac),robotJcinvT))
+    robotW = np.matmul(Minv[6:6+modeldof,0:model.nq],robotNc[0:model.nq,6:6+modeldof])
+ #   robotWinv = np.linalg.inv(robotW)
 
     #  joint_id = model.getFrameId("L_Foot_Joint")
   #  model.addJoint(joint_id, pinocchio.JointModel, pinocchio.SE3.Identity(),"L_Foot_Joint1")
@@ -109,7 +126,5 @@ def talker():
        # print("\n")    
 
   
-
-
 if __name__=='__main__':
     talker()
