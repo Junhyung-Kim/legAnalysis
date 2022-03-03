@@ -104,9 +104,24 @@ def talker():
     robotLambdac = np.linalg.inv(np.matmul(np.matmul(robotJac,Minv),np.transpose(robotJac)))
     robotJcinvT = np.matmul(np.matmul(robotLambdac, robotJac),Minv)
     robotNc = np.subtract(np.identity(model.nv),np.matmul(np.transpose(robotJac),robotJcinvT))
+    robotPc = np.matmul(robotJcinvT,G)
     robotW = np.matmul(Minv[6:6+modeldof,0:model.nq],robotNc[0:model.nq,6:6+modeldof])
- #   robotWinv = np.linalg.inv(robotW)
+    robotWinv = np.linalg.inv(robotW)
 
+    robotContactForce = pinocchio.utils.zero(12)
+
+    if contactState == 1:
+        print("ss")
+        #robotContactForce = robotJcinvT[0:12,6:6+modeldof]*robotTorque - robotPc
+    elif contactState == 2:
+        print("RF support")
+        #robotContactForce[6:12] = robotJcinvT[0:6,6:6+modeldof]*robotTorque - robotPc
+    else:
+        print("LF support")    
+        #robotContactForce[0:6] = robotJcinvT[0:6,6:6+modeldof]*robotTorque - robotPc
+    
+    print(robotNc.shape)
+    
     #  joint_id = model.getFrameId("L_Foot_Joint")
   #  model.addJoint(joint_id, pinocchio.JointModel, pinocchio.SE3.Identity(),"L_Foot_Joint1")
   
