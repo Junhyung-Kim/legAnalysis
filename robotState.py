@@ -94,6 +94,9 @@ def talker():
     LF_cj = pinocchio.computeFrameJacobian(model,data,q,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
     RF_cj = pinocchio.computeFrameJacobian(model,data,q,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
 
+    J = pinocchio.computeJointJacobiansTimeVariation(model,data,q,qdot)
+    pinocchio.getFrameJacobianTimeVariation(model,data,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED,dJ)
+
     for i in range(0, contactnum):
         if i == 0:
             robotJac[0:6,0:model.nv] = LF_cj
