@@ -25,7 +25,7 @@ J_LF = geometricJacobian(robot,q_init,'L_Foot_Link');
 
 
 %%%%%%%%foot step input%%%%%%%%%%
-X_direction = 1.0;
+X_direction = 2.0;
 step_length = 0.2;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -55,10 +55,10 @@ end
 %%%%%%%%%%%%%%input%%%%%%%%%%%%%%%%%%%
 hz_ = 1000;
 % walking_tick_ = 1/hz;
-total_tick = 10000;
+total_tick = 20000;
 
 t_total_t = 1.2;
-t_temp_t = 1.5;
+t_temp_t = 1.0;
 t_double = 0.1;
 
 t_total_ = t_total_t * hz_;
@@ -152,14 +152,16 @@ for walking_tick_ = 0:total_tick-1
                 elseif walking_tick_ < t_last_ - t_double_2
                     ref_zmp_(walking_tick_+1,1) = foot_step(current_step_num_+1,1);
                     ref_zmp_(walking_tick_+1,2) = A_;
-                else
-%                     ref_zmp_(walking_tick_+1,1) = ((foot_step(current_step_num_+1,1) + foot_step(current_step_num_+2,1)) / 2 - Kx_) + (Kx_ / t_double_2) * (walking_tick_ - t_start_ - (t_total_ - t_double_2)); 
-                    ref_zmp_(walking_tick_+1,2) = (Ky_ / t_double_2) * (t_total_ - (walking_tick_ - t_start_));
+                elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                    ref_zmp_(walking_tick_+1,1) = foot_step(current_step_num_+1,1); 
+                    ref_zmp_(walking_tick_+1,2) = (Ky_ / t_double_2) * (t_total_ - (walking_tick_ - t_start_));   
                 end
-            else
+            else % final_step_length ~= 0
             end
         end
-
+    elseif walking_tick_ > t_last_
+        ref_zmp_(walking_tick_+1,1) = foot_step(current_step_num_+1,1);
+        ref_zmp_(walking_tick_+1,2) = 0;   
     end
 end
 
