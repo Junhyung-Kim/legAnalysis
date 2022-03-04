@@ -120,13 +120,13 @@ def talker():
 
     if contactState == 1:
         print("ss")
-        robotContactForce = np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc)
+        robotContactForce = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
     elif contactState == 2:
         print("RF support")
-        robotContactForce[6:12] = np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc)
+        robotContactForce[6:12] = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
     else:
         print("LF support")    
-        robotContactForce[0:6] = np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc)
+        robotContactForce[0:6] = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
 
     print(robotContactForce)
     #  joint_id = model.getFrameId("L_Foot_Joint")
