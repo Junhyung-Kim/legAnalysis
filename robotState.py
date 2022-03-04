@@ -67,41 +67,41 @@ def talker():
         print("double support")
         contactnum = 2
         robotJac = np.zeros((2 * 6, model.nv))
+        robotdJac = np.zeros((2 * 6, model.nv))
         robotIc = np.zeros((2 * 6, 2 * 6))
     elif contactState == 2:
         print("RF support")
         contactnum = 1
         robotJac = np.zeros((1 * 6, model.nv))
+        robotdJac = np.zeros((1 * 6, model.nv))
         robotIc = np.zeros((1 * 6, 1 * 6))
     else:
         print("LF support")    
         contactnum = 1
         robotJac = np.zeros((1 * 6, model.nv))
+        robotdJac = np.zeros((1 * 6, model.nv))
         robotIc = np.zeros((1 * 6, 1 * 6))
-
-    #COR_slice = data.C[:6:39]
-    #M_slice = data.M[:6:39]
-    #g_slice = data.tau[6:39]
-
 
     M = data.M
     COR = data.C
     G = data.tau
     Minv = data.Minv
+    b = np.matmul(COR,qdot)
 
     LF_j = pinocchio.computeFrameJacobian(model,data,q,LFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
     RF_j = pinocchio.computeFrameJacobian(model,data,q,RFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
     LF_cj = pinocchio.computeFrameJacobian(model,data,q,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
     RF_cj = pinocchio.computeFrameJacobian(model,data,q,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
-
-    J = pinocchio.computeJointJacobiansTimeVariation(model,data,q,qdot)
-    pinocchio.getFrameJacobianTimeVariation(model,data,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED,dJ)
+    RF_cdj = pinocchio.frameJacobianTimeVariation(model,data,q,qdot,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
+    LF_cdj = pinocchio.frameJacobianTimeVariation(model,data,q,qdot,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
 
     for i in range(0, contactnum):
         if i == 0:
             robotJac[0:6,0:model.nv] = LF_cj
+            robotdJac[0:6,0:model.nv] = LF_cdj
         elif i == 1:
             robotJac[6:12,0:model.nv] = RF_cj
+            robotdJac[6:12,0:model.nv] = RF_cdj
         print(i)
 
     robotLambdac = np.linalg.inv(np.matmul(np.matmul(robotJac,Minv),np.transpose(robotJac)))
@@ -110,21 +110,25 @@ def talker():
     robotPc = np.matmul(robotJcinvT,G)
     robotW = np.matmul(Minv[6:6+modeldof,0:model.nq],robotNc[0:model.nq,6:6+modeldof])
     robotWinv = np.linalg.inv(robotW)
+    robotmuc = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac,Minv),b),np.matmul(robotdJac,qdot)))
+    robothc = np.matmul(np.transpose(robotJac),np.add(robotmuc, robotPc))
 
     robotContactForce = pinocchio.utils.zero(12)
 
+    robotTorque = np.matmul(np.linalg.inv(robotNc),np.subtract(np.add(np.add(np.matmul(M,qddot),b),G),robothc))
+    #print(robotTorque)
+
     if contactState == 1:
         print("ss")
-        #robotContactForce = robotJcinvT[0:12,6:6+modeldof]*robotTorque - robotPc
+        robotContactForce = np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc)
     elif contactState == 2:
         print("RF support")
-        #robotContactForce[6:12] = robotJcinvT[0:6,6:6+modeldof]*robotTorque - robotPc
+        robotContactForce[6:12] = np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc)
     else:
         print("LF support")    
-        #robotContactForce[0:6] = robotJcinvT[0:6,6:6+modeldof]*robotTorque - robotPc
-    
-    print(robotNc.shape)
-    
+        robotContactForce[0:6] = np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc)
+
+    print(robotContactForce)
     #  joint_id = model.getFrameId("L_Foot_Joint")
   #  model.addJoint(joint_id, pinocchio.JointModel, pinocchio.SE3.Identity(),"L_Foot_Joint1")
   
