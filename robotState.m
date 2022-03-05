@@ -26,7 +26,7 @@ J_LF = geometricJacobian(robot,q_init,'L_Foot_Link');
 
 %%%%%%%%foot step input%%%%%%%%%%
 X_direction = 2.0;
-step_length = 0.2;
+step_length = 0.5;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 foot_step_number = fix(X_direction / step_length);
@@ -55,7 +55,7 @@ end
 %%%%%%%%%%%%%%input%%%%%%%%%%%%%%%%%%%
 hz_ = 1000;
 % walking_tick_ = 1/hz;
-total_tick = 20000;
+total_tick = 10000;
 
 t_total_t = 1.2;
 t_temp_t = 1.0;
@@ -165,13 +165,113 @@ for walking_tick_ = 0:total_tick-1
     end
 end
 
+t_start_ = t_temp_ + 1;
+t_last_ = t_temp_ + t_total_;
+current_step_num_ = 0;
+
+for walking_tick_ = 0:total_tick-1
+    walking_tick(walking_tick_+1) = walking_tick_;
+    if walking_tick_ <= t_temp_
+        if walking_tick_ < 0.5 * hz_
+            ref_com_(walking_tick_+1,1) = T_LF(1,4);
+            ref_com_(walking_tick_+1,2) = 0;
+        elseif walking_tick_ < 1.5 * hz_
+            del_x = walking_tick_ - 0.5 * hz_;
+            ref_com_(walking_tick_+1,1) = T_LF(1,4);
+            ref_com_(walking_tick_+1,2) = 0;
+        else
+            ref_com_(walking_tick_+1,1) = T_LF(1,4);
+            ref_com_(walking_tick_+1,2) = 0;
+        end
+    elseif walking_tick_ <= t_last_
+      
+        if current_step_num_ == 0
+            A_ = foot_step(current_step_num_+1,2);
+            B_ = (foot_step(current_step_num_+1,1) + foot_step(current_step_num_+2,1)) / 2;
+            Kx_ = (B_ * t_double * wn_) / (t_double * wn_ + tanh(wn_ * (t_total_t/2 - t_double)));
+            Ky_ = A_ * t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)) / (1 + t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)));
+            Cx1_ = Kx_ - B_;
+            Cx2_ = Kx_ / (wn_ * t_double);
+            Cy1_ = Ky_ - A_;
+            Cy2_ = Ky_ / (wn_ * t_double);
+            if walking_tick_ < t_start_ + t_double_1
+                ref_com_(walking_tick_+1,1) = foot_step(current_step_num_+1,1);
+                ref_com_(walking_tick_+1,2) = Ky_ / t_double_1 * (walking_tick_- t_start_);
+            elseif (walking_tick_ < t_last_ - t_double_2) && (walking_tick_ >= t_start_ + t_double_1)
+                ref_com_(walking_tick_+1,1) = foot_step(current_step_num_+1,1) + Cx1_ * cosh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + Cx2_ * sinh(wn_*((walking_tick_ - t_start_)/hz_ - t_double));
+                ref_com_(walking_tick_+1,2) = Cy1_ * cosh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + Cy2_ * sinh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + A_;
+            elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                ref_com_(walking_tick_+1,1) = (B_ - Kx_) + (Kx_ / t_double_2) * (walking_tick_ - t_start_ - (t_total_ - t_double_2)); 
+                ref_com_(walking_tick_+1,2) = (Ky_ / t_double_2) * (t_total_ - (walking_tick_ - t_start_));
+            end
+            if walking_tick_ == t_last_
+                current_step_num_ = current_step_num_ + 1;
+                t_start_ = t_start_ + t_total_;
+                t_last_ = t_last_ + t_total_;
+            end
+
+        elseif current_step_num_ < foot_step_number 
+            A_ = foot_step(current_step_num_+1,2);
+            B_ = (foot_step(current_step_num_,1) + foot_step(current_step_num_+1,1)) / 2 - foot_step(current_step_num_,1);
+            Kx_ = (B_ * t_double * wn_) / (t_double * wn_ + tanh(wn_ * (t_total_t/2 - t_double)));
+            Ky_ = A_ * t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)) / (1 + t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)));
+            Cx1_ = Kx_ - B_;
+            Cx2_ = Kx_ / (wn_ * t_double);
+            Cy1_ = Ky_ - A_;
+            Cy2_ = Ky_ / (wn_ * t_double);
+
+            if walking_tick_ < t_start_ + t_double_1
+                ref_com_(walking_tick_+1,1) = (foot_step(current_step_num_,1) + foot_step(current_step_num_+1,1)) / 2 + (Kx_ / t_double_1) * (walking_tick_ - t_start_);
+                ref_com_(walking_tick_+1,2) = Ky_ / t_double_1 * (walking_tick_ - t_start_);
+            elseif walking_tick_ < t_last_ - t_double_2
+                ref_com_(walking_tick_+1,1) = (foot_step(current_step_num_,1) + foot_step(current_step_num_+1,1)) / 2 + Cx1_ * cosh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + Cx2_ * sinh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + B_;
+                ref_com_(walking_tick_+1,2) = Cy1_ * cosh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + Cy2_ * sinh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + A_;
+            else
+                ref_com_(walking_tick_+1,1) = ((foot_step(current_step_num_+1,1) + foot_step(current_step_num_+2,1)) / 2 - Kx_) + (Kx_ / t_double_2) * (walking_tick_ - t_start_ - (t_total_ - t_double_2)); 
+                ref_com_(walking_tick_+1,2) = (Ky_ / t_double_2) * (t_total_ - (walking_tick_ - t_start_));
+            end
+            if walking_tick_ == t_last_
+                current_step_num_ = current_step_num_ + 1;
+                t_start_ = t_start_ + t_total_;
+                t_last_ = t_last_ + t_total_;
+            end
+        elseif current_step_num_ == foot_step_number
+            if final_step_length == 0
+                A_ = foot_step(current_step_num_+1,2);
+                B_ = (foot_step(current_step_num_,1) + foot_step(current_step_num_+1,1)) / 2 - foot_step(current_step_num_,1);
+                Kx_ = (B_ * t_double * wn_) / (t_double * wn_ + tanh(wn_ * (t_total_t/2 - t_double)));
+                Ky_ = A_ * t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)) / (1 + t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)));
+                Cx1_ = Kx_ - B_;
+                Cx2_ = Kx_ / (wn_ * t_double);
+                Cy1_ = Ky_ - A_;
+                Cy2_ = Ky_ / (wn_ * t_double);                
+                if walking_tick_ < t_start_ + t_double_1
+                    ref_com_(walking_tick_+1,1) = (foot_step(current_step_num_,1) + foot_step(current_step_num_+1,1)) / 2 + (Kx_ / t_double_1) * (walking_tick_ - t_start_);
+                    ref_com_(walking_tick_+1,2) = Ky_ / t_double_1 * (walking_tick_- t_start_);
+                elseif walking_tick_ < t_last_ - t_double_2
+                    ref_com_(walking_tick_+1,1) = foot_step(current_step_num_+1,1);
+                    ref_com_(walking_tick_+1,2) = Cy1_ * cosh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + Cy2_ * sinh(wn_*((walking_tick_ - t_start_)/hz_ - t_double)) + A_;
+                elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                    ref_com_(walking_tick_+1,1) = foot_step(current_step_num_+1,1); 
+                    ref_com_(walking_tick_+1,2) = (Ky_ / t_double_2) * (t_total_ - (walking_tick_ - t_start_));   
+                end
+            else % final_step_length ~= 0
+            end
+        end
+    elseif walking_tick_ > t_last_
+        ref_com_(walking_tick_+1,1) = foot_step(current_step_num_+1,1);
+        ref_com_(walking_tick_+1,2) = 0;   
+    end
+end
+
+
+
 
 
 
 
 subplot(2,1,1)
-plot(walking_tick,ref_zmp_(:,1))
+plot(walking_tick,ref_zmp_(:,1),walking_tick,ref_com_(:,1))
 subplot(2,1,2)
-plot(walking_tick,ref_zmp_(:,2))
-
+plot(walking_tick,ref_zmp_(:,2),walking_tick,ref_com_(:,2))
 
