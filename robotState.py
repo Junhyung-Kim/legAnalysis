@@ -34,8 +34,8 @@ def walkingSetup():
     zc = 0.727822
     wn = np.sqrt(9.81/zc)
 
-    ref_zmp = np.zeros((total_tick,2));
-    walking_tick = np.zeros((1,total_tick));
+    ref_zmp = np.zeros((total_tick,2))
+    walking_tick = np.zeros((1,total_tick))
 
 def footStep(): 
     global foot_step
@@ -55,11 +55,17 @@ def footStep():
         foot_step[foot_step_number,0] = final_step_length + foot_step[foot_step_number - 1,0]
         foot_step[foot_step_number,1] = foot_step[foot_step_number - 1,1] * (-1)
 
-#def zmpGenerator():
+def zmpGenerator():
+    print("ZMP")
 
+def comGenerator():
+    print("COM")
 
-def talker():
-    np.set_printoptions(threshold=sys.maxsize)
+def inverseKinematics():
+    print("IK")
+
+def modelInitialize():
+    global model, data, LFframe_id, RFframe_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z
     model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
@@ -97,9 +103,21 @@ def talker():
     pinocchio.updateFramePlacements(model,data)
     pinocchio.computeJointJacobians(model, data, q)
     pinocchio.computeMinverse(model, data, q)
-    
-    global LF_tran
-    global RF_tran
+
+    LF_tran = data.oMi[7].translation
+    RF_tran = data.oMi[13].translation
+    LF_rot = data.oMi[7].rotation
+    RF_rot = data.oMi[13].rotation
+
+    PELV_tran = data.oMi[1].translation
+    PELV_rot = data.oMi[1].rotation
+
+def modelUpdate():
+    global contactState, contactnum, M, G, COR, Minv, b, robotJac, robotdJac, robotIc, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robothc
+    pinocchio.forwardKinematics(model, data, q, qdot, qddot)
+    pinocchio.updateFramePlacements(model,data)
+    pinocchio.computeJointJacobians(model, data, q)
+    pinocchio.computeMinverse(model, data, q)
 
     LF_tran = data.oMi[7].translation
     RF_tran = data.oMi[13].translation
@@ -113,6 +131,9 @@ def talker():
     pinocchio.computeCoriolisMatrix(model, data, q, qdot)
     pinocchio.rnea(model, data, q, qdot_z, qddot_z)
 
+    pinocchio.crba(model, data, q)
+    pinocchio.computeCoriolisMatrix(model, data, q, qdot)
+    pinocchio.rnea(model, data, q, qdot_z, qddot_z)
 
     contactState = 1
     contactnum = 0
@@ -156,18 +177,16 @@ def talker():
         elif i == 1:
             robotJac[6:12,0:model.nv] = RF_cj
             robotdJac[6:12,0:model.nv] = RF_cdj
-        print(i)
 
     robotLambdac = np.linalg.inv(np.matmul(np.matmul(robotJac,Minv),np.transpose(robotJac)))
     robotJcinvT = np.matmul(np.matmul(robotLambdac, robotJac),Minv)
     robotNc = np.subtract(np.identity(model.nv),np.matmul(np.transpose(robotJac),robotJcinvT))
     robotPc = np.matmul(robotJcinvT,G)
-   # robotW = np.matmul(Minv[6:6+modeldof,0:model.nq],robotNc[0:model.nq,6:6+modeldof])
-   # robotWinv = np.linalg.inv(robotW)
 
     robotmuc = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac,Minv),b),np.matmul(robotdJac,qdot)))
     robothc = np.matmul(np.transpose(robotJac),np.add(robotmuc, robotPc))
 
+def estimateContactForce():
     robotContactForce = pinocchio.utils.zero(12)
 
     robotTorque = np.matmul(np.linalg.pinv(robotNc),np.subtract(np.add(np.add(np.matmul(M,qddot),b),G),robothc))
@@ -179,11 +198,19 @@ def talker():
     else:   
         robotContactForce[0:6] = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
 
-    walkingSetup()
-    footStep()
-
     print(robotTorque)
     print(robotContactForce)
+
+def talker():
+    modelInitialize()
+    walkingSetup()
+    footStep()
+    zmpGenerator()
+    comGenerator()
+
+    inverseKinematics()
+    modelUpdate()
+    estimateContactForce()
   
 if __name__=='__main__':
     talker()
