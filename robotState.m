@@ -79,8 +79,6 @@ zc_ = 0.727822;
 wn_ = sqrt(9.81/zc_);
 
 foot_height_ = 0.5;
-
-PHASE_variable = zeros(total_tick);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 for walking_tick_ = 0:total_tick-1
@@ -498,5 +496,5 @@ subplot(3,1,2)
 plot(walking_tick,ref_zmp_(:,2),walking_tick,ref_com_(:,2),walking_tick,lfoot(:,2),walking_tick,rfoot(:,2))
 subplot(3,1,3)
 plot(walking_tick,lfoot(:,3),walking_tick,rfoot(:,3),walking_tick,PHASE_variable)
-legend('left','right')
+legend('left','right','phase')
 
