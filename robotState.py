@@ -96,9 +96,11 @@ def comGenerator():
     print("COM")
 
 def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV_tran_c, HRR_tran_init_c, HLR_tran_init_c, HRR_rot_init_c, HLR_rot_init_c, PELV_tran_init_c, PELV_rot_init_c, CPELV_tran_init_c):
-    global leg_q
+    global leg_q, leg_qdot, leg_qddot
     M_PI = 3.14159265358979323846
     leg_q = np.zeros(12)
+    leg_qdot = np.zeros(12)
+    leg_qddot = np.zeros(12)
 
     l_upper = 0.35
     l_lower = 0.35
@@ -203,11 +205,10 @@ def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV
     leg_q[9] = leg_q[9] * (-1)
     leg_q[10] = leg_q[10] * (-1)
 
-    print(leg_q)
-    print("IK")
+    #print(leg_q)
 
 def modelInitialize():
-    global model, data, LFframe_id, RFframe_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init
+    global model, data, LFframe_id, RFframe_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command
     model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
@@ -230,15 +231,19 @@ def modelInitialize():
 
     data = model.createData()
     q = pinocchio.randomConfiguration(model)
+    q_command = pinocchio.randomConfiguration(model)
     q_init = [0.0, 0.0, 0.814175, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.56, 1.3, -0.73, 0.0, 0.0, 0.0, -0.56, 1.3, -0.73, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
 
     for i in range(0, len(q)):
         q[i] = q_init[i]
+        q_command[i] = q_init[i]
 
     modeldof = model.nq - 7
 
     qdot = pinocchio.utils.zero(model.nv)
+    qdot_command = pinocchio.utils.zero(model.nv)
     qddot = pinocchio.utils.zero(model.nv)
+    qddot_command = pinocchio.utils.zero(model.nv)
     qdot_z = pinocchio.utils.zero(model.nv)
     qddot_z = pinocchio.utils.zero(model.nv)
     pinocchio.forwardKinematics(model, data, q, qdot, qddot)
@@ -268,76 +273,29 @@ def modelInitialize():
     CPELV_tran_init = data.oMi[1].translation 
     PELV_rot_init = data.oMi[1].rotation
 
-    print("C")
-    print(HRR_tran_init)
-    print(PELV_tran_init)
-    
-    print(RF_tran_init)
-    print(LF_tran_init)
-    print(data.oMi[7].translation)
-    print(model.inertias[6].lever)
-
-  
-  #  CPELV_tran_init[0] = -0.00739
-  #  CPELV_tran_init[1] = 0.0
-  #  CPELV_tran_init[2] = 0.849
-
-  #  PELV_tran_init[0] = 0.0695
-   # PELV_tran_init[1] = 0.0
-   # PELV_tran_init[2] = 0.849
-
-   # PELV_tran[0] = 0.0695
-   # PELV_tran[1] = 0.0
-   # PELV_tran[2] = 0.849
-
-   # LF_tran_init[0] = -0.017
-   # LF_tran_init[1] = 0.102
-   # LF_tran_init[2] = -0.696
-
-    #RF_tran_init[0] = -0.017
-    #RF_tran_init[1] = -0.102
-    #RF_tran_init[2] = -0.696
-
-    #LF_tran[0] = -0.017
-    #LF_tran[1] = 0.102
-    #LF_tran[2] = -0.696
-
-    #RF_tran[0] = -0.017
-    #RF_tran[1] = -0.102
-    #RF_tran[2] = -0.696
-
-    #HLR_tran_init[0] = 0.105
-    #HLR_tran_init[1] = 0.1025
-    #HLR_tran_init[2] = 0.707
-
-    #HRR_tran_init[0] = 0.105
-    #HRR_tran_init[1] = -0.1025
-    #HRR_tran_init[2] = 0.707
-
-
-def modelUpdate():
+def modelUpdate(q_desired, qdot_desired, qddot_desired):
     global contactState, contactnum, M, G, COR, Minv, b, robotJac, robotdJac, robotIc, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robothc
-    pinocchio.forwardKinematics(model, data, q, qdot, qddot)
+    pinocchio.forwardKinematics(model, data, q_desired, qdot_desired, qddot_desired)
     pinocchio.updateFramePlacements(model,data)
     pinocchio.updateGlobalPlacements(model,data)
-    pinocchio.computeJointJacobians(model, data, q)
-    pinocchio.computeMinverse(model, data, q)
+    pinocchio.computeJointJacobians(model, data, q_desired)
+    pinocchio.computeMinverse(model, data, q_desired)
 
     LF_tran = data.oMi[7].translation
     RF_tran = data.oMi[13].translation
     LF_rot = data.oMi[7].rotation
     RF_rot = data.oMi[13].rotation
 
-    PELV_tran = data.oMi[1].translation
+    PELV_tran = np.add(data.oMi[1].translation, model.inertias[1].lever)
     PELV_rot = data.oMi[1].rotation
 
-    pinocchio.crba(model, data, q)
-    pinocchio.computeCoriolisMatrix(model, data, q, qdot)
-    pinocchio.rnea(model, data, q, qdot_z, qddot_z)
+    pinocchio.crba(model, data, q_desired)
+    pinocchio.computeCoriolisMatrix(model, data, q_desired, qdot_desired)
+    pinocchio.rnea(model, data, q_desired, qdot_z, qddot_z)
 
-    pinocchio.crba(model, data, q)
-    pinocchio.computeCoriolisMatrix(model, data, q, qdot)
-    pinocchio.rnea(model, data, q, qdot_z, qddot_z)
+    pinocchio.crba(model, data, q_desired)
+    pinocchio.computeCoriolisMatrix(model, data, q_desired, qdot_desired)
+    pinocchio.rnea(model, data, q_desired, qdot_z, qddot_z)
 
     contactState = 1
     contactnum = 0
@@ -365,14 +323,14 @@ def modelUpdate():
     COR = data.C
     G = data.tau
     Minv = data.Minv
-    b = np.matmul(COR,qdot)
+    b = np.matmul(COR,qdot_desired)
 
-    LF_j = pinocchio.computeFrameJacobian(model,data,q,LFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
-    RF_j = pinocchio.computeFrameJacobian(model,data,q,RFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
-    LF_cj = pinocchio.computeFrameJacobian(model,data,q,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
-    RF_cj = pinocchio.computeFrameJacobian(model,data,q,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
-    RF_cdj = pinocchio.frameJacobianTimeVariation(model,data,q,qdot,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
-    LF_cdj = pinocchio.frameJacobianTimeVariation(model,data,q,qdot,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
+    LF_j = pinocchio.computeFrameJacobian(model,data,q_desired,LFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
+    RF_j = pinocchio.computeFrameJacobian(model,data,q_desired,RFframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
+    LF_cj = pinocchio.computeFrameJacobian(model,data,q_desired,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)    
+    RF_cj = pinocchio.computeFrameJacobian(model,data,q_desired,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
+    RF_cdj = pinocchio.frameJacobianTimeVariation(model,data,q_desired,qdot_desired,RFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
+    LF_cdj = pinocchio.frameJacobianTimeVariation(model,data,q_desired,qdot_desired,LFcframe_id,pinocchio.LOCAL_WORLD_ALIGNED)
 
     for i in range(0, contactnum):
         if i == 0:
@@ -387,13 +345,25 @@ def modelUpdate():
     robotNc = np.subtract(np.identity(model.nv),np.matmul(np.transpose(robotJac),robotJcinvT))
     robotPc = np.matmul(robotJcinvT,G)
 
-    robotmuc = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac,Minv),b),np.matmul(robotdJac,qdot)))
+    robotmuc = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac,Minv),b),np.matmul(robotdJac,qdot_desired)))
     robothc = np.matmul(np.transpose(robotJac),np.add(robotmuc, robotPc))
 
-def estimateContactForce():
+def jointUpdate():
+    #q_command[0] = comx
+    #qdot_command[0] = comdx
+    #qddt_command[0] = comddx
+
+    for i in range(7, 19):
+        q_command[i] = leg_q[i-7]
+
+    for i in range(6, 18):
+        qdot_command[i] = leg_qdot[i-7]
+        qddot_command[i] = leg_qddot[i-7]
+
+def estimateContactForce(qddot_desired):
     robotContactForce = pinocchio.utils.zero(12)
 
-    robotTorque = np.matmul(np.linalg.pinv(robotNc),np.subtract(np.add(np.add(np.matmul(M,qddot),b),G),robothc))
+    robotTorque = np.matmul(np.linalg.pinv(robotNc),np.subtract(np.add(np.add(np.matmul(M,qddot_desired),b),G),robothc))
 
     if contactState == 1:
         robotContactForce = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
@@ -402,19 +372,21 @@ def estimateContactForce():
     else:   
         robotContactForce[0:6] = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
 
-    print(robotTorque)
-    print(robotContactForce)
+    #print(robotTorque)
+    #print(robotContactForce)
 
 def talker():
     modelInitialize()
-   # walkingSetup()
-    #footStep()
-    #zmpGenerator()
-    #comGenerator()
+    walkingSetup()
+    footStep()
+    zmpGenerator()
+    comGenerator()
 
     inverseKinematics(LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
-  #  modelUpdate()
-   # estimateContactForce()
+    
+    jointUpdate()
+    modelUpdate(q_command,qdot_command,qddot_command)
+    estimateContactForce(qddot_command)
   
 if __name__=='__main__':
     talker()
