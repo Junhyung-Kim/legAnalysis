@@ -101,7 +101,7 @@ def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV
     leg_q = np.zeros(12)
 
     l_upper = 0.35
-    l_lower = 0.254
+    l_lower = 0.35
 
     offset_hip_pitch = 0.0
     offset_knee_pitch = 0.0
@@ -112,8 +112,8 @@ def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV
     lp = np.matmul(np.transpose(LF_rot_c), np.transpose(lpt))
     rp = np.matmul(np.transpose(RF_rot_c), np.transpose(rpt))
     
-    PELF_rot = np.matmul(np.transpose(PELV_rot_c), np.transpose(LF_rot_c))
-    PERF_rot = np.matmul(np.transpose(PELV_rot_c), np.transpose(LF_rot_c))
+    PELF_rot = np.matmul(np.transpose(PELV_rot_c), LF_rot_c)
+    PERF_rot = np.matmul(np.transpose(PELV_rot_c), RF_rot_c)
 
     ld = np.zeros(3)  
     rd = np.zeros(3)
@@ -132,7 +132,7 @@ def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV
     lr = lp + ld
     rr = rp + rd
 
-    lc = np.linalg.norm(lr)*np.linalg.norm(lr)
+    lc = np.linalg.norm(lr)
 
     leg_q[3] = -1 * np.arccos((l_upper * l_upper + l_lower * l_lower - lc * lc) / (2 * l_upper * l_lower)) + M_PI
     l_ankle_pitch = np.arcsin((l_upper * np.sin(M_PI - leg_q[3])) / lc)
@@ -157,14 +157,16 @@ def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV
     if c_lq5 > 1.0:
         c_lq5 = 1.0
     elif c_lq5 < -1.0:
-        c_lg5 = -1.0
+        c_lq5 = -1.0
+    else:
+        c_lq5 = c_lq5
 
     leg_q[0] = -1 * np.arcsin(c_lq5)
     leg_q[2] = -1 * np.arcsin(r_tl2[2, 0] / np.cos(leg_q[1])) + offset_hip_pitch
     leg_q[3] = leg_q[3] - offset_knee_pitch
     leg_q[4] = leg_q[4] - offset_ankle_pitch
 
-    rc = np.linalg.norm(rr)*np.linalg.norm(rr)
+    rc = np.linalg.norm(rr)
     leg_q[9] = -1 * np.arccos((l_upper * l_upper + l_lower * l_lower - rc * rc) / (2 * l_upper * l_lower)) + M_PI
 
     r_ankle_pitch = np.arcsin((l_upper * np.sin(M_PI - leg_q[9])) / rc)
@@ -175,18 +177,20 @@ def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV
     r_r3r4 = np.zeros((3,3))
     r_r4r5 = np.zeros((3,3))
 
-    r_r2r3 = rotateWithY(leg_q[0])
+    r_r2r3 = rotateWithY(leg_q[9])
     r_r3r4 = rotateWithY(leg_q[10])
     r_r4r5 = rotateWithX(leg_q[11])
 
-    r_tl2 = np.matmul(np.matmul(np.matmul(PELV_rot, np.transpose(r_r4r5)),np.transpose(r_r3r4)),np.transpose(r_r2r3))
+    r_tr2 = np.matmul(np.matmul(np.matmul(PELV_rot, np.transpose(r_r4r5)),np.transpose(r_r3r4)),np.transpose(r_r2r3))
     leg_q[7] = np.arcsin(r_tr2[2,1])
     c_rq5 = -r_tr2[0, 1] / np.cos(leg_q[7])
 
     if c_rq5 > 1.0:
         c_rq5 = 1.0
     elif c_rq5 < -1.0:
-        c_rg5 = -1.0
+        c_rq5 = -1.0
+    else:
+        c_rq5 = c_rq5  
     
     leg_q[6] = -1* np.arcsin(c_rq5)
     leg_q[8] = np.arcsin(r_tr2[2, 0] / np.cos(leg_q[7])) - offset_hip_pitch
@@ -248,28 +252,30 @@ def modelInitialize():
     LF_rot = data.oMi[7].rotation
     RF_rot = data.oMi[13].rotation
 
-    PELV_tran = data.oMi[1].translation
+    PELV_tran = np.add(data.oMi[1].translation, model.inertias[1].lever)
     PELV_rot = data.oMi[1].rotation
 
     LF_tran_init = data.oMi[7].translation
     RF_tran_init = data.oMi[13].translation
-    HLR_tran_init = data.oMi[4].translation
-    HRR_tran_init = data.oMi[10].translation
+    HLR_tran_init = data.oMi[2].translation
+    HRR_tran_init = data.oMi[8].translation
     LF_rot_init = data.oMi[7].rotation
     RF_rot_init = data.oMi[13].rotation
-    HLR_rot_init = data.oMi[4].rotation
-    HRR_rot_init = data.oMi[10].rotation
+    HLR_rot_init = data.oMi[2].rotation
+    HRR_rot_init = data.oMi[8].rotation
 
-    PELV_tran_init = data.oMi[1].translation
-    CPELV_tran_init = data.oMi[1].translation
+    PELV_tran_init = np.add(data.oMi[1].translation, model.inertias[1].lever)
+    CPELV_tran_init = data.oMi[1].translation 
     PELV_rot_init = data.oMi[1].rotation
 
     print("C")
-    print(CPELV_tran_init)
+    print(HRR_tran_init)
     print(PELV_tran_init)
+    
     print(RF_tran_init)
     print(LF_tran_init)
-    print(LFframe_id)
+    print(data.oMi[7].translation)
+    print(model.inertias[6].lever)
 
   
   #  CPELV_tran_init[0] = -0.00739
