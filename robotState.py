@@ -6,6 +6,40 @@ import numpy as np
 from sys import argv
 from os.path import dirname, join, abspath
 
+def rotateWithY(pitch_angle):
+    rotate_with_y = np.zeros((3,3))
+
+    rotate_with_y[0, 0] = np.cos(pitch_angle)
+    rotate_with_y[1, 0] = 0.0
+    rotate_with_y[2, 0] = -1 * np.sin(pitch_angle)
+
+    rotate_with_y[0, 1] = 0.0
+    rotate_with_y[1, 1] = 1.0
+    rotate_with_y[2, 1] = 0.0
+
+    rotate_with_y[0, 2] = np.sin(pitch_angle)
+    rotate_with_y[1, 2] = 0.0
+    rotate_with_y[2, 2] = np.cos(pitch_angle)
+
+    return rotate_with_y 
+
+def rotateWithX(roll_angle):
+    rotate_with_x = np.zeros((3,3))
+
+    rotate_with_x[0, 0] = 1.0
+    rotate_with_x[1, 0] = 0.0
+    rotate_with_x[2, 0] = 0.0
+
+    rotate_with_x[0, 1] = 0.0
+    rotate_with_x[1, 1] = np.cos(roll_angle)
+    rotate_with_x[2, 1] = np.sin(roll_angle)
+
+    rotate_with_x[0, 2] = 0.0
+    rotate_with_x[1, 2] = -1 * np.sin(roll_angle)
+    rotate_with_x[2, 2] = np.cos(roll_angle)
+
+    return rotate_with_x     
+
 def walkingSetup():
     global x_direction, step_length, hz, total_tick, foot_step_number, final_step_length, t_total_t, t_temp_t, t_double, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
     global zc, wn, current_step_num, ref_zmp, walking_tick, total_tick
@@ -61,11 +95,115 @@ def zmpGenerator():
 def comGenerator():
     print("COM")
 
-def inverseKinematics():
+def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV_tran_c, HRR_tran_init_c, HLR_tran_init_c, HRR_rot_init_c, HLR_rot_init_c, PELV_tran_init_c, PELV_rot_init_c, CPELV_tran_init_c):
+    global leg_q
+    M_PI = 3.14159265358979323846
+    leg_q = np.zeros(12)
+
+    l_upper = 0.35
+    l_lower = 0.254
+
+    offset_hip_pitch = 0.0
+    offset_knee_pitch = 0.0
+    offset_ankle_pitch = 0.0
+
+    lpt = np.subtract(PELV_tran_c, LF_tran_c)
+    rpt = np.subtract(PELV_tran_c, RF_tran_c)
+    lp = np.matmul(np.transpose(LF_rot_c), np.transpose(lpt))
+    rp = np.matmul(np.transpose(RF_rot_c), np.transpose(rpt))
+    
+    PELF_rot = np.matmul(np.transpose(PELV_rot_c), np.transpose(LF_rot_c))
+    PERF_rot = np.matmul(np.transpose(PELV_rot_c), np.transpose(LF_rot_c))
+
+    ld = np.zeros(3)  
+    rd = np.zeros(3)
+
+    ld[0] = HLR_tran_init_c[0] - PELV_tran_init_c[0]
+    ld[1] = HLR_tran_init_c[1] - PELV_tran_init_c[1]
+    ld[2] = -(CPELV_tran_init_c[2] - HLR_tran_init_c[2]) + (CPELV_tran_init_c[2] - PELV_tran_init_c[2])
+
+    rd[0] = HRR_tran_init_c[0] - PELV_tran_init_c[0]
+    rd[1] = HRR_tran_init_c[1] - PELV_tran_init_c[1]
+    rd[2] = -(CPELV_tran_init_c[2] - HRR_tran_init_c[2]) + (CPELV_tran_init_c[2] - PELV_tran_init_c[2])
+
+    ld = np.matmul(np.transpose(LF_rot_c), ld)
+    rd = np.matmul(np.transpose(RF_rot_c), rd)
+
+    lr = lp + ld
+    rr = rp + rd
+
+    lc = np.linalg.norm(lr)*np.linalg.norm(lr)
+
+    leg_q[3] = -1 * np.arccos((l_upper * l_upper + l_lower * l_lower - lc * lc) / (2 * l_upper * l_lower)) + M_PI
+    l_ankle_pitch = np.arcsin((l_upper * np.sin(M_PI - leg_q[3])) / lc)
+    
+    leg_q[4] = -1 * np.arctan2(lr[0], np.sqrt(lr[1] * lr[1] + lr[2] * lr[2])) - l_ankle_pitch
+    leg_q[5] = np.arctan2(lr[1], lr[2])
+
+    r_tl2 = np.zeros((3,3))
+    r_l2l3 = np.zeros((3,3))
+    r_l3l4 = np.zeros((3,3))
+    r_l4l5 = np.zeros((3,3))
+
+    r_l2l3 = rotateWithY(leg_q[3])
+    r_l3l4 = rotateWithY(leg_q[4])
+    r_l4l5 = rotateWithX(leg_q[5])
+
+    r_tl2 = np.matmul(np.matmul(np.matmul(PELV_rot, np.transpose(r_l4l5)),np.transpose(r_l3l4)),np.transpose(r_l2l3))
+    leg_q[1] = np.arcsin(r_tl2[2, 1])
+
+    c_lq5 = np.divide(-r_tl2[0, 1], np.cos(leg_q[1]))
+
+    if c_lq5 > 1.0:
+        c_lq5 = 1.0
+    elif c_lq5 < -1.0:
+        c_lg5 = -1.0
+
+    leg_q[0] = -1 * np.arcsin(c_lq5)
+    leg_q[2] = -1 * np.arcsin(r_tl2[2, 0] / np.cos(leg_q[1])) + offset_hip_pitch
+    leg_q[3] = leg_q[3] - offset_knee_pitch
+    leg_q[4] = leg_q[4] - offset_ankle_pitch
+
+    rc = np.linalg.norm(rr)*np.linalg.norm(rr)
+    leg_q[9] = -1 * np.arccos((l_upper * l_upper + l_lower * l_lower - rc * rc) / (2 * l_upper * l_lower)) + M_PI
+
+    r_ankle_pitch = np.arcsin((l_upper * np.sin(M_PI - leg_q[9])) / rc)
+    leg_q[10] = -1 * np.arctan2(rr[0], np.sqrt(rr[1] * rr[1] + rr[2] * rr[2])) - r_ankle_pitch
+    leg_q[11] = np.arctan2(rr[1], rr[2])
+    r_tr2 = np.zeros((3,3))
+    r_r2r3 = np.zeros((3,3))
+    r_r3r4 = np.zeros((3,3))
+    r_r4r5 = np.zeros((3,3))
+
+    r_r2r3 = rotateWithY(leg_q[0])
+    r_r3r4 = rotateWithY(leg_q[10])
+    r_r4r5 = rotateWithX(leg_q[11])
+
+    r_tl2 = np.matmul(np.matmul(np.matmul(PELV_rot, np.transpose(r_r4r5)),np.transpose(r_r3r4)),np.transpose(r_r2r3))
+    leg_q[7] = np.arcsin(r_tr2[2,1])
+    c_rq5 = -r_tr2[0, 1] / np.cos(leg_q[7])
+
+    if c_rq5 > 1.0:
+        c_rq5 = 1.0
+    elif c_rq5 < -1.0:
+        c_rg5 = -1.0
+    
+    leg_q[6] = -1* np.arcsin(c_rq5)
+    leg_q[8] = np.arcsin(r_tr2[2, 0] / np.cos(leg_q[7])) - offset_hip_pitch
+    leg_q[9] = -1 * leg_q[9] + offset_knee_pitch
+    leg_q[10] = -1 * leg_q[10] + offset_ankle_pitch
+
+    leg_q[0] = leg_q[0] * (-1)
+    leg_q[6] = leg_q[6] * (-1)
+    leg_q[8] = leg_q[8] * (-1)
+    leg_q[9] = leg_q[9] * (-1)
+    leg_q[10] = leg_q[10] * (-1)
+
+    print(leg_q)
     print("IK")
 
 def modelInitialize():
-    global model, data, LFframe_id, RFframe_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z
+    global model, data, LFframe_id, RFframe_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init
     model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
@@ -101,6 +239,7 @@ def modelInitialize():
     qddot_z = pinocchio.utils.zero(model.nv)
     pinocchio.forwardKinematics(model, data, q, qdot, qddot)
     pinocchio.updateFramePlacements(model,data)
+    pinocchio.updateGlobalPlacements(model,data)
     pinocchio.computeJointJacobians(model, data, q)
     pinocchio.computeMinverse(model, data, q)
 
@@ -112,10 +251,69 @@ def modelInitialize():
     PELV_tran = data.oMi[1].translation
     PELV_rot = data.oMi[1].rotation
 
+    LF_tran_init = data.oMi[7].translation
+    RF_tran_init = data.oMi[13].translation
+    HLR_tran_init = data.oMi[4].translation
+    HRR_tran_init = data.oMi[10].translation
+    LF_rot_init = data.oMi[7].rotation
+    RF_rot_init = data.oMi[13].rotation
+    HLR_rot_init = data.oMi[4].rotation
+    HRR_rot_init = data.oMi[10].rotation
+
+    PELV_tran_init = data.oMi[1].translation
+    CPELV_tran_init = data.oMi[1].translation
+    PELV_rot_init = data.oMi[1].rotation
+
+    print("C")
+    print(CPELV_tran_init)
+    print(PELV_tran_init)
+    print(RF_tran_init)
+    print(LF_tran_init)
+    print(LFframe_id)
+
+  
+  #  CPELV_tran_init[0] = -0.00739
+  #  CPELV_tran_init[1] = 0.0
+  #  CPELV_tran_init[2] = 0.849
+
+  #  PELV_tran_init[0] = 0.0695
+   # PELV_tran_init[1] = 0.0
+   # PELV_tran_init[2] = 0.849
+
+   # PELV_tran[0] = 0.0695
+   # PELV_tran[1] = 0.0
+   # PELV_tran[2] = 0.849
+
+   # LF_tran_init[0] = -0.017
+   # LF_tran_init[1] = 0.102
+   # LF_tran_init[2] = -0.696
+
+    #RF_tran_init[0] = -0.017
+    #RF_tran_init[1] = -0.102
+    #RF_tran_init[2] = -0.696
+
+    #LF_tran[0] = -0.017
+    #LF_tran[1] = 0.102
+    #LF_tran[2] = -0.696
+
+    #RF_tran[0] = -0.017
+    #RF_tran[1] = -0.102
+    #RF_tran[2] = -0.696
+
+    #HLR_tran_init[0] = 0.105
+    #HLR_tran_init[1] = 0.1025
+    #HLR_tran_init[2] = 0.707
+
+    #HRR_tran_init[0] = 0.105
+    #HRR_tran_init[1] = -0.1025
+    #HRR_tran_init[2] = 0.707
+
+
 def modelUpdate():
     global contactState, contactnum, M, G, COR, Minv, b, robotJac, robotdJac, robotIc, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robothc
     pinocchio.forwardKinematics(model, data, q, qdot, qddot)
     pinocchio.updateFramePlacements(model,data)
+    pinocchio.updateGlobalPlacements(model,data)
     pinocchio.computeJointJacobians(model, data, q)
     pinocchio.computeMinverse(model, data, q)
 
@@ -203,14 +401,14 @@ def estimateContactForce():
 
 def talker():
     modelInitialize()
-    walkingSetup()
-    footStep()
-    zmpGenerator()
-    comGenerator()
+   # walkingSetup()
+    #footStep()
+    #zmpGenerator()
+    #comGenerator()
 
-    inverseKinematics()
-    modelUpdate()
-    estimateContactForce()
+    inverseKinematics(LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
+  #  modelUpdate()
+   # estimateContactForce()
   
 if __name__=='__main__':
     talker()
