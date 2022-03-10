@@ -79,11 +79,14 @@ zc_ = 0.727822;
 wn_ = sqrt(9.81/zc_);
 
 foot_height_ = 0.5;
+
+PHASE_variable = zeros(total_tick);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 for walking_tick_ = 0:total_tick-1
     walking_tick(walking_tick_+1) = walking_tick_;
     if walking_tick_ <= t_temp_
+        
         if walking_tick_ < 0.5 * hz_
             ref_zmp_(walking_tick_+1,1) = T_LF(1,4);
             ref_zmp_(walking_tick_+1,2) = 0;
@@ -96,11 +99,7 @@ for walking_tick_ = 0:total_tick-1
             ref_zmp_(walking_tick_+1,2) = 0;
         end
     elseif walking_tick_ <= t_last_
-%         A_ = foot_step(current_step_num_+1,2);
-%         B_ = foot_step(current_step_num_+1,1) + (foot_step(current_step_num_+1,1) + foot_step(current_step_num_+2,1)) / 2;
-%         Kx_ = (B_ * t_double * wn_) / (t_double * wn_ + tanh(wn_ * (t_total_t/2 - t_double)));
-%         Ky_ = A_ * t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)) / (1 + t_double * wn_ * tanh(wn_ * (t_total_t/2 - t_double)));
-        
+
         if current_step_num_ == 0
             A_ = foot_step(current_step_num_+1,2);
             B_ = (foot_step(current_step_num_+1,1) + foot_step(current_step_num_+2,1)) / 2;
@@ -286,9 +285,13 @@ current_step_num_ = 0;
 rfoot = zeros(total_tick,3);
 lfoot = zeros(total_tick,3);
 
+
 for walking_tick_ = 0:total_tick-1
     walking_tick(walking_tick_+1) = walking_tick_;
     if walking_tick_ <= t_temp_
+
+        PHASE_variable(walking_tick_+1) = 1; %DSP
+
         if walking_tick_ < 0.5 * hz_
             lfoot(walking_tick_+1,1) = T_LF(1,4);
             lfoot(walking_tick_+1,2) = T_LF(2,4);
@@ -316,8 +319,15 @@ for walking_tick_ = 0:total_tick-1
             rfoot(walking_tick_+1,3) = T_RF(3,4);
         end
     elseif walking_tick_ <= t_last_
-      
-        if current_step_num_ == 0         
+        if current_step_num_ == 0
+            
+            if walking_tick_ < t_start_ + t_double_1
+                PHASE_variable(walking_tick_+1) = 1; %DSP
+            elseif (walking_tick_ < t_last_ - t_double_2) && (walking_tick_ >= t_start_ + t_double_1)
+                PHASE_variable(walking_tick_+1) = 3; %SSP
+            elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                PHASE_variable(walking_tick_+1) = 1; %DSP
+            end
             lfoot(walking_tick_+1,1) = T_LF(1,4);
             lfoot(walking_tick_+1,2) = T_LF(2,4);
             lfoot(walking_tick_+1,3) = T_LF(3,4);
@@ -343,7 +353,13 @@ for walking_tick_ = 0:total_tick-1
             end
         elseif current_step_num_ < foot_step_number
             if mod(current_step_num_,2) == 1
-    
+                if walking_tick_ < t_start_ + t_double_1
+                    PHASE_variable(walking_tick_+1) = 1; %DSP
+                elseif (walking_tick_ < t_last_ - t_double_2) && (walking_tick_ >= t_start_ + t_double_1)
+                    PHASE_variable(walking_tick_+1) = 2; %SSP
+                elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                    PHASE_variable(walking_tick_+1) = 1; %DSP
+                end                
                 LF = [foot_step(current_step_num_,1) foot_step(current_step_num_+2,1)];
                 lf_y = spline([t_start_ t_last_],[0 LF 0]);
                 lf_x = linspace(t_start_,t_last_,t_last_-t_start_+1);
@@ -371,7 +387,13 @@ for walking_tick_ = 0:total_tick-1
                 end
     
             elseif mod(current_step_num_,2) == 0 && current_step_num_ > 0
-    
+                if walking_tick_ < t_start_ + t_double_1
+                    PHASE_variable(walking_tick_+1) = 1; %DSP
+                elseif (walking_tick_ < t_last_ - t_double_2) && (walking_tick_ >= t_start_ + t_double_1)
+                    PHASE_variable(walking_tick_+1) = 3; %SSP
+                elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                    PHASE_variable(walking_tick_+1) = 1; %DSP
+                end    
                 RF = [foot_step(current_step_num_,1) foot_step(current_step_num_+2,1)];
                 rf_y = spline([t_start_ t_last_],[0 RF 0]);
                 rf_x = linspace(t_start_,t_last_,t_last_-t_start_+1);
@@ -401,7 +423,13 @@ for walking_tick_ = 0:total_tick-1
         elseif current_step_num_ == foot_step_number
             if final_step_length == 0                       
                 if mod(current_step_num_,2) == 1
-
+                    if walking_tick_ < t_start_ + t_double_1
+                        PHASE_variable(walking_tick_+1) = 1; %DSP
+                    elseif (walking_tick_ < t_last_ - t_double_2) && (walking_tick_ >= t_start_ + t_double_1)
+                        PHASE_variable(walking_tick_+1) = 2; %SSP
+                    elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                        PHASE_variable(walking_tick_+1) = 1; %DSP
+                    end    
                     LF = [foot_step(current_step_num_,1) foot_step(current_step_num_+1,1)];
                     lf_y = spline([t_start_ t_last_],[0 LF 0]);
                     lf_x = linspace(t_start_,t_last_,t_last_-t_start_+1);
@@ -421,7 +449,13 @@ for walking_tick_ = 0:total_tick-1
                     lfoot(walking_tick_+1,3) = plf1(walking_tick_+1-t_start_);
                     rfoot(walking_tick_+1,3) = T_RF(3,4);
                 elseif mod(current_step_num_,2) == 0 && current_step_num_ > 0
-        
+                    if walking_tick_ < t_start_ + t_double_1
+                        PHASE_variable(walking_tick_+1) = 1; %DSP
+                    elseif (walking_tick_ < t_last_ - t_double_2) && (walking_tick_ >= t_start_ + t_double_1)
+                        PHASE_variable(walking_tick_+1) = 3; %SSP
+                    elseif (walking_tick_ <= t_last_) && (walking_tick_ >= t_last_ - t_double_2)
+                        PHASE_variable(walking_tick_+1) = 1; %DSP
+                    end        
                     RF = [foot_step(current_step_num_,1) foot_step(current_step_num_+1,1)];
                     rf_y = spline([t_start_ t_last_],[0 RF 0]);
                     rf_x = linspace(t_start_,t_last_,t_last_-t_start_+1);
@@ -445,6 +479,7 @@ for walking_tick_ = 0:total_tick-1
             end
         end
     elseif walking_tick_ > t_last_
+        PHASE_variable(walking_tick_+1) = 1; %DSP
         lfoot(walking_tick_+1,1) = foot_step(current_step_num_+1,1);
         lfoot(walking_tick_+1,2) = T_LF(2,4);
         lfoot(walking_tick_+1,3) = T_LF(3,4);
@@ -462,6 +497,6 @@ legend('zmp','com','left','right')
 subplot(3,1,2)
 plot(walking_tick,ref_zmp_(:,2),walking_tick,ref_com_(:,2),walking_tick,lfoot(:,2),walking_tick,rfoot(:,2))
 subplot(3,1,3)
-plot(walking_tick,lfoot(:,3),walking_tick,rfoot(:,3))
+plot(walking_tick,lfoot(:,3),walking_tick,rfoot(:,3),walking_tick,PHASE_variable)
 legend('left','right')
 
