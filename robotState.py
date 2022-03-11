@@ -411,7 +411,7 @@ def swingFootGenerator():
                             current_step_num = current_step_num + 1
                             t_start = t_start + t_total
                             t_last = t_last + t_total
-                    elif current_step_num % 2 == 0: ##need revise
+                    elif current_step_num % 2 == 0:
                         if walking_tick[i] < t_start + t_double_1:
                             phase_variable[int(walking_tick[i])] = 1 
                             rfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1, 0]
@@ -728,6 +728,7 @@ def jointUpdate():
         qddot_command[i] = leg_qddot[i-7]
 
 def estimateContactForce(qddot_desired):
+    global robotContactForce
     robotContactForce = pinocchio.utils.zero(12)
 
     robotTorque = np.matmul(np.linalg.pinv(robotNc),np.subtract(np.add(np.add(np.matmul(M,qddot_desired),b),G),robothc))
@@ -742,12 +743,41 @@ def estimateContactForce(qddot_desired):
     #print(robotTorque)
     #print(robotContactForce)
 
+def calMargin():
+    print("CalMargin")
+    contact_margin = np.zeros(10)
+    mu_s = 0.3
+    lx = 1.0
+    ly = 0.5
+
+    if contactState == 1:
+        contact_margin[0] = robotContactForce[2]
+        contact_margin[1] = np.sqrt(robotContactForce[0] * robotContactForce[0] + robotContactForce[1] * robotContactForce[1]) - mu_s * abs(robotContactForce[2])
+        contact_margin[2] = np.abs(robotContactForce[5]) - mu_s * np.abs(robotContactForce[2])
+        contact_margin[3] = np.abs(robotContactForce[3]) - ly/2 * np.abs(robotContactForce[2])
+        contact_margin[4] = np.abs(robotContactForce[4]) - lx/2 * np.abs(robotContactForce[2])
+        contact_margin[5] = robotContactForce[8]
+        contact_margin[6] = np.sqrt(robotContactForce[6] * robotContactForce[6] + robotContactForce[7] * robotContactForce[7]) - mu_s * abs(robotContactForce[8])
+        contact_margin[7] = np.abs(robotContactForce[11]) - mu_s * np.abs(robotContactForce[8])
+        contact_margin[8] = np.abs(robotContactForce[9]) - ly/2 * np.abs(robotContactForce[8])
+        contact_margin[9] = np.abs(robotContactForce[10]) - lx/2 * np.abs(robotContactForce[8])
+    elif contactState == 2:
+        contact_margin[5] = robotContactForce[8]
+        contact_margin[6] = np.sqrt(robotContactForce[6] * robotContactForce[6] + robotContactForce[7] * robotContactForce[7]) - mu_s * abs(robotContactForce[8])
+        contact_margin[7] = np.abs(robotContactForce[11]) - mu_s * np.abs(robotContactForce[8])
+        contact_margin[8] = np.abs(robotContactForce[9]) - ly/2 * np.abs(robotContactForce[8])
+        contact_margin[9] = np.abs(robotContactForce[10]) - lx/2 * np.abs(robotContactForce[8])
+    else:   
+        contact_margin[0] = robotContactForce[2]
+        contact_margin[1] = np.sqrt(robotContactForce[0] * robotContactForce[0] + robotContactForce[1] * robotContactForce[1]) - mu_s * abs(robotContactForce[2])
+        contact_margin[2] = np.abs(robotContactForce[5]) - mu_s * np.abs(robotContactForce[2])
+        contact_margin[3] = np.abs(robotContactForce[3]) - ly/2 * np.abs(robotContactForce[2])
+        contact_margin[4] = np.abs(robotContactForce[4]) - lx/2 * np.abs(robotContactForce[2])
+
 def talker():
     modelInitialize()
     walkingSetup()
     footStep()
-    print(foot_step)
-    print(foot_step_number)
     zmpGenerator()
     comGenerator()
     swingFootGenerator()
@@ -757,6 +787,8 @@ def talker():
     jointUpdate()
     modelUpdate(q_command,qdot_command,qddot_command)
     estimateContactForce(qddot_command)
+
+    calMargin()
 
     plt.plot(walking_tick, rfoot[:,2])
     plt.show()
