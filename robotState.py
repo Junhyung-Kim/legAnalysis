@@ -42,7 +42,7 @@ def rotateWithX(roll_angle):
 
 def walkingSetup():
     global x_direction, step_length, hz, total_tick, foot_step_number, final_step_length, t_total_t, t_temp_t, t_double, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
-    global zc, wn, current_step_num, ref_zmp, walking_tick, total_tick
+    global zc, wn, current_step_num, ref_zmp, ref_com, walking_tick, total_tick
     hz = 1000
     x_direction = 1.0
     step_length = 0.1
@@ -69,7 +69,8 @@ def walkingSetup():
     wn = np.sqrt(9.81/zc)
 
     ref_zmp = np.zeros((total_tick,2))
-    walking_tick = np.zeros((1,total_tick))
+    ref_com = np.zeros((total_tick,2))
+    walking_tick = np.zeros((total_tick))
 
 def footStep(): 
     global foot_step
@@ -91,9 +92,118 @@ def footStep():
 
 def zmpGenerator():
     print("ZMP")
+    global current_step_num, t_start, t_last
+    for i in range(0, total_tick):
+        walking_tick[i] = i
+        if walking_tick[i] <= t_temp:
+            ref_zmp[int(walking_tick[i]),0] = LF_tran[0]
+            ref_zmp[int(walking_tick[i]),1] = 0
+        elif walking_tick[i] <= t_last:
+           if current_step_num == 0:
+                A_ = foot_step[current_step_num,1]
+                B_ = (foot_step[current_step_num,0] + foot_step[current_step_num+1,0]) / 2
+                Kx_ = (B_ * t_double * wn) / (t_double * wn + np.tanh(wn * (t_total_t/2 - t_double)))
+                Ky_ = A_ * t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)) / (1 + t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)))
+                if int(walking_tick[i]) < t_start + t_double_1:
+                    ref_zmp[int(walking_tick[i]),0] = foot_step[current_step_num,0]
+                    ref_zmp[int(walking_tick[i]),1] = Ky_ / t_double_1 * (int(walking_tick[i]) - t_start)
+                elif (walking_tick[i] < t_last - t_double_2) and (walking_tick[i] >= t_start + t_double_1):
+                    ref_zmp[int(walking_tick[i]),0] = foot_step[current_step_num,0]
+                    ref_zmp[int(walking_tick[i]),1] = A_
+                elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                    ref_zmp[int(walking_tick[i]),0] = (B_ - Kx_) + (Kx_ / t_double_2) * (int(walking_tick[i]) - t_start - (t_total - t_double_2)) 
+                    ref_zmp[int(walking_tick[i]),1] = (Ky_ / t_double_2) * (t_total - (int(walking_tick[i]) - t_start))
+                
+                if walking_tick[i] == t_last:
+                    current_step_num = current_step_num + 1
+                    t_start = t_start + t_total
+                    t_last = t_last + t_total
+
+    t_start = t_temp + 1
+    t_last = t_temp + t_total
+    current_step_num = 0
 
 def comGenerator():
     print("COM")
+    global current_step_num, t_start, t_last
+    for i in range(0, total_tick):
+        walking_tick[i] = i
+        if walking_tick[i] <= t_temp:
+            ref_com[int(walking_tick[i]),0] = LF_tran[0]
+            ref_com[int(walking_tick[i]),1] = 0
+        elif walking_tick[i] <= t_last:
+            if current_step_num == 0:
+                A_ = foot_step[current_step_num,1]
+                B_ = (foot_step[current_step_num,0] + foot_step[current_step_num+1,0]) / 2
+                Kx_ = (B_ * t_double * wn) / (t_double * wn + np.tanh(wn * (t_total_t/2 - t_double)))
+                Ky_ = A_ * t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)) / (1 + t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)))
+                Cx1_ = Kx_ - B_
+                Cx2_ = Kx_ / (wn * t_double)
+                Cy1_ = Ky_ - A_
+                Cy2_ = Ky_ / (wn * t_double)
+                if walking_tick[i] < t_start + t_double_1:
+                    ref_com[int(walking_tick[i]),0] = foot_step[current_step_num,1]
+                    ref_com[int(walking_tick[i]),1] = Ky_ / t_double_1 * (walking_tick[i]- t_start)
+                elif (walking_tick[i] < t_last - t_double_2) and (walking_tick[i] >= t_start + t_double_1):
+                    ref_com[int(walking_tick[i]),0] = foot_step[current_step_num,0] + Cx1_ * np.cosh(wn*((walking_tick[i] - t_start)/hz - t_double)) + Cx2_ * np.sinh(wn*((walking_tick[i] - t_start)/hz - t_double))
+                    ref_com[int(walking_tick[i]),1] = Cy1_ * np.cosh(wn*((walking_tick[i] - t_start)/hz - t_double)) + Cy2_ * np.sinh(wn*((walking_tick[i] - t_start)/hz - t_double)) + A_
+                elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                    ref_com[int(walking_tick[i]),0] = (B_ - Kx_) + (Kx_ / t_double_2) * (walking_tick[i] - t_start - (t_total - t_double_2)); 
+                    ref_com[int(walking_tick[i]),1] = (Ky_ / t_double_2) * (t_total - (walking_tick[i] - t_start))
+                
+                if walking_tick[i] == t_last:
+                    current_step_num = current_step_num + 1
+                    t_start = t_start + t_total
+                    t_last = t_last + t_total
+            elif current_step_num < foot_step_number:
+                A_ = foot_step[current_step_num,1]
+                B_ = (foot_step[current_step_num-1,0] + foot_step[current_step_num,0]) / 2 - foot_step[current_step_num - 1,0]
+                Kx_ = (B_ * t_double * wn) / (t_double * wn + np.tanh(wn * (t_total_t/2 - t_double)))
+                Ky_ = A_ * t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)) / (1 + t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)))
+                Cx1_ = Kx_ - B_
+                Cx2_ = Kx_ / (wn * t_double)
+                Cy1_ = Ky_ - A_
+                Cy2_ = Ky_ / (wn * t_double)
+                if walking_tick[i] < t_start + t_double_1:
+                    ref_com[int(walking_tick[i]),0] = (foot_step[current_step_num-1,0] + foot_step[current_step_num,0]) / 2 + (Kx_ / t_double_1) * (walking_tick[i] - t_start)
+                    ref_com[int(walking_tick[i]),1] = Ky_ / t_double_1 * (walking_tick[i] - t_start)
+                elif walking_tick[i] < t_last - t_double_2:
+                    ref_com[int(walking_tick[i]),0] = (foot_step[current_step_num-1,0] + foot_step[current_step_num,0]) / 2 + Cx1_ * np.cosh(wn*((walking_tick[i] - t_start)/hz - t_double)) + Cx2_ * np.sinh(wn*((walking_tick[i] - t_start)/hz - t_double)) + B_
+                    ref_com[int(walking_tick[i]),1] = Cy1_ * np.cosh(wn*((walking_tick[i] - t_start)/hz - t_double)) + Cy2_ * np.sinh(wn*((walking_tick[i] - t_start)/hz - t_double)) + A_
+                else:
+                    ref_com[int(walking_tick[i]),0] = ((foot_step[current_step_num,0] + foot_step[current_step_num+1,0]) / 2 - Kx_) + (Kx_ / t_double_2) * (walking_tick[i] - t_start - (t_total - t_double_2)) 
+                    ref_com[int(walking_tick[i]),1] = (Ky_ / t_double_2) * (t_total - (walking_tick[i] - t_start))
+                
+                if walking_tick[i] == t_last:
+                    current_step_num = current_step_num + 1
+                    t_start = t_start + t_total
+                    t_last = t_last + t_total
+            elif current_step_num == foot_step_number:
+                if final_step_length == 0:
+                    A_ = foot_step[current_step_num,1]
+                    B_ = (foot_step[current_step_num -1 ,0] + foot_step[current_step_num,0]) / 2 - foot_step[current_step_num -1,0]
+                    Kx_ = (B_ * t_double * wn) / (t_double * wn + np.tanh(wn * (t_total_t/2 - t_double)))
+                    Ky_ = A_ * t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)) / (1 + t_double * wn * np.tanh(wn * (t_total_t/2 - t_double)))
+                    Cx1_ = Kx_ - B_
+                    Cx2_ = Kx_ / (wn * t_double)
+                    Cy1_ = Ky_ - A_
+                    Cy2_ = Ky_ / (wn * t_double)                
+                    if walking_tick[i] < t_start + t_double_1:
+                        ref_com[int(walking_tick[i]),0] = (foot_step[current_step_num,0] + foot_step[current_step_num,0]) / 2 + (Kx_ / t_double_1) * (walking_tick[i] - t_start)
+                        ref_com[int(walking_tick[i]),1] = Ky_ / t_double_1 * (walking_tick[i]- t_start)
+                    elif walking_tick[i] < t_last - t_double_2:
+                        ref_com[int(walking_tick[i]),0] = foot_step(current_step_num,0)
+                        ref_com[int(walking_tick[i]),1] = Cy1_ * np.cosh(wn*((walking_tick[i] - t_start)/hz - t_double)) + Cy2_ * np.sinh(wn*((walking_tick[i] - t_start)/hz - t_double)) + A_
+                    elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                        ref_com[int(walking_tick[i]),0] = foot_step(current_step_num,0) 
+                        ref_com[int(walking_tick[i]),1] = (Ky_ / t_double_2) * (t_total - (walking_tick[i] - t_start));
+            elif walking_tick[i] > t_last:
+                ref_com[walking_tick[i],0] = foot_step[current_step_num,0]
+                ref_com[walking_tick[i],1] = 0
+                
+
+def swingFootGenerator():
+    print("foot")
 
 def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV_tran_c, HRR_tran_init_c, HLR_tran_init_c, HRR_rot_init_c, HLR_rot_init_c, PELV_tran_init_c, PELV_rot_init_c, CPELV_tran_init_c):
     global leg_q, leg_qdot, leg_qddot
@@ -205,14 +315,18 @@ def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV
     leg_q[9] = leg_q[9] * (-1)
     leg_q[10] = leg_q[10] * (-1)
 
-    #print(leg_q)
-
 def modelInitialize():
-    global model, data, LFframe_id, RFframe_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command
+    global model, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command
     model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
     RFframe_id = model.getFrameId("R_Foot_Link")
+
+    PELVjoint_id = model.getJointId("root_joint")
+    LHjoint_id = model.getJointId("L_HipYaw_Joint")
+    RHjoint_id = model.getJointId("R_HipYaw_Joint")
+    RFjoint_id = model.getJointId("R_AnkleRoll_Joint")
+    LFjoint_id = model.getJointId("L_AnkleRoll_Joint")
 
     contactPointLF = pinocchio.SE3.Identity()
     contactPointRF = pinocchio.SE3.Identity()
@@ -220,12 +334,9 @@ def modelInitialize():
     contactPointLF.translation.T.flat = [0.03, 0, -0.1585]
     contactPointRF.translation.T.flat = [0.03, 0, -0.1585]
 
-    joint_id = model.getJointId("L_AnkleRoll_Joint")
-    model.addBodyFrame("LF_contact", joint_id, contactPointLF, LFframe_id)
+    model.addBodyFrame("LF_contact", LFjoint_id, contactPointLF, LFframe_id)
+    model.addBodyFrame("RF_contact", RFjoint_id, contactPointRF, RFframe_id)
 
-    joint_id = model.getJointId("R_AnkleRoll_Joint")
-    model.addBodyFrame("RF_contact", joint_id, contactPointRF, RFframe_id)
- 
     LFcframe_id = model.getFrameId("LF_contact")
     RFcframe_id = model.getFrameId("RF_contact")
 
@@ -252,42 +363,44 @@ def modelInitialize():
     pinocchio.computeJointJacobians(model, data, q)
     pinocchio.computeMinverse(model, data, q)
 
-    LF_tran = data.oMi[7].translation
-    RF_tran = data.oMi[13].translation
-    LF_rot = data.oMi[7].rotation
-    RF_rot = data.oMi[13].rotation
+    LF_tran = data.oMi[LFjoint_id].translation
+    RF_tran = data.oMi[RFjoint_id].translation
+    LF_rot = data.oMi[LFjoint_id].rotation
+    RF_rot = data.oMi[RFjoint_id].rotation
 
-    PELV_tran = np.add(data.oMi[1].translation, model.inertias[1].lever)
-    PELV_rot = data.oMi[1].rotation
+    PELV_tran = np.add(data.oMi[PELVjoint_id].translation, model.inertias[PELVjoint_id].lever)
+    PELV_rot = data.oMi[PELVjoint_id].rotation
 
-    LF_tran_init = data.oMi[7].translation
-    RF_tran_init = data.oMi[13].translation
-    HLR_tran_init = data.oMi[2].translation
-    HRR_tran_init = data.oMi[8].translation
-    LF_rot_init = data.oMi[7].rotation
-    RF_rot_init = data.oMi[13].rotation
-    HLR_rot_init = data.oMi[2].rotation
-    HRR_rot_init = data.oMi[8].rotation
+    LF_tran_init = data.oMi[LFjoint_id].translation
+    RF_tran_init = data.oMi[RFjoint_id].translation
+    HLR_tran_init = data.oMi[LHjoint_id].translation
+    HRR_tran_init = data.oMi[RHjoint_id].translation
+    LF_rot_init = data.oMi[LFjoint_id].rotation
+    RF_rot_init = data.oMi[RFjoint_id].rotation
+    HLR_rot_init = data.oMi[LHjoint_id].rotation
+    HRR_rot_init = data.oMi[RHjoint_id].rotation
 
-    PELV_tran_init = np.add(data.oMi[1].translation, model.inertias[1].lever)
-    CPELV_tran_init = data.oMi[1].translation 
-    PELV_rot_init = data.oMi[1].rotation
+    PELV_tran_init = np.add(data.oMi[PELVjoint_id].translation, model.inertias[PELVjoint_id].lever)
+    CPELV_tran_init = data.oMi[PELVjoint_id].translation 
+    PELV_rot_init = data.oMi[PELVjoint_id].rotation
 
 def modelUpdate(q_desired, qdot_desired, qddot_desired):
     global contactState, contactnum, M, G, COR, Minv, b, robotJac, robotdJac, robotIc, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robothc
     pinocchio.forwardKinematics(model, data, q_desired, qdot_desired, qddot_desired)
     pinocchio.updateFramePlacements(model,data)
     pinocchio.updateGlobalPlacements(model,data)
+    pinocchio.crba(model, data, q_desired)
+    
     pinocchio.computeJointJacobians(model, data, q_desired)
     pinocchio.computeMinverse(model, data, q_desired)
 
-    LF_tran = data.oMi[7].translation
-    RF_tran = data.oMi[13].translation
-    LF_rot = data.oMi[7].rotation
-    RF_rot = data.oMi[13].rotation
+    LF_tran = data.oMi[LFjoint_id].translation
+    RF_tran = data.oMi[RFjoint_id].translation
+    LF_rot = data.oMi[LFjoint_id].rotation
+    RF_rot = data.oMi[RFjoint_id].rotation
 
-    PELV_tran = np.add(data.oMi[1].translation, model.inertias[1].lever)
-    PELV_rot = data.oMi[1].rotation
+    PELV_tran = np.add(data.oMi[PELVjoint_id].translation, model.inertias[PELVjoint_id].lever)
+    PELV_rot = data.oMi[PELVjoint_id].rotation
 
     pinocchio.crba(model, data, q_desired)
     pinocchio.computeCoriolisMatrix(model, data, q_desired, qdot_desired)
@@ -381,6 +494,7 @@ def talker():
     footStep()
     zmpGenerator()
     comGenerator()
+    swingFootGenerator()
 
     inverseKinematics(LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
     
