@@ -3,8 +3,53 @@ from __future__ import print_function
 import pinocchio
 import sys
 import numpy as np
+import math
+import matplotlib.pyplot as plt
 from sys import argv
+from scipy.interpolate import CubicSpline
 from os.path import dirname, join, abspath
+
+def quinticSpline(time, time_0, time_f, x_0, x_dot_0, x_ddot_0, x_f, x_dot_f, x_ddot_f):
+    
+    if time < time_0:
+      result = x_0
+    elif time > time_f:
+      result = x_f
+
+    time_s = time_f - time_0
+    a1 = x_0
+    a2 = x_dot_0
+    a3 = x_ddot_0 / 2.0
+
+    Temp = np.zeros((3,3))
+    R_temp = np.zeros(3)
+
+    Temp[0,0] = math.pow(time_s, 3)
+    Temp[0,1] = math.pow(time_s, 4)
+    Temp[0,2] = math.pow(time_s, 5)
+    Temp[1,0] = 3.0 * math.pow(time_s, 2)
+    Temp[1,1] = 4.0 * math.pow(time_s, 3)
+    Temp[1,2] = 5.0 * math.pow(time_s, 4)
+    Temp[2,0] = 6.0 * time_s
+    Temp[2,1] = 12.0 * math.pow(time_s, 2)
+    Temp[2,2] = 20.0 * math.pow(time_s, 3)
+
+    R_temp[0] = x_f - x_0 - x_dot_0 * time_s - x_ddot_0 * math.pow(time_s, 2) / 2.0
+    R_temp[1] = x_dot_f - x_dot_0 - x_ddot_0 * time_s
+    R_temp[2] = x_ddot_f - x_ddot_0
+
+    RES = np.matmul(np.linalg.inv(Temp), R_temp)
+
+    a4 = RES[0]
+    a5 = RES[1]
+    a6 = RES[2]
+
+    time_fs = time - time_0
+
+    position = a1 + a2 * math.pow(time_fs, 1) + a3 * math.pow(time_fs, 2) + a4 * math.pow(time_fs, 3) + a5 * math.pow(time_fs, 4) + a6 * math.pow(time_fs, 5);
+    
+    result = position
+    return result
 
 def rotateWithY(pitch_angle):
     rotate_with_y = np.zeros((3,3))
@@ -42,20 +87,20 @@ def rotateWithX(roll_angle):
 
 def walkingSetup():
     global x_direction, step_length, hz, total_tick, foot_step_number, final_step_length, t_total_t, t_temp_t, t_double, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
-    global zc, wn, current_step_num, ref_zmp, ref_com, walking_tick, total_tick
+    global zc, wn, current_step_num, ref_zmp, ref_com, walking_tick, total_tick, phase_variable, lfoot, rfoot, foot_height
     hz = 1000
-    x_direction = 1.0
-    step_length = 0.1
+    x_direction = 1.00
+    step_length = 0.10
     foot_step_number = int(round(x_direction / step_length))
-    final_step_length = x_direction % step_length
+    final_step_length = x_direction - step_length * foot_step_number
 
-    if x_direction % step_length != 0:
+    if final_step_length != 0:
         foot_step_number = foot_step_number + 1   
     
     t_total_t = 1.2
     t_temp_t = 1.0
     t_double = 0.1
-    total_tick = 80000
+    total_tick = 30000
 
     t_total = t_total_t * hz
     t_temp = t_temp_t * hz
@@ -64,13 +109,19 @@ def walkingSetup():
     t_double_1 = 0.1 * hz
     t_double_2 = 0.1 * hz
 
+    foot_height = 0.05
+
     current_step_num = 0
     zc = 0.727822
     wn = np.sqrt(9.81/zc)
 
     ref_zmp = np.zeros((total_tick,2))
     ref_com = np.zeros((total_tick,2))
-    walking_tick = np.zeros((total_tick))
+    walking_tick = np.zeros(total_tick)
+    phase_variable = np.zeros(total_tick)
+
+    lfoot = np.zeros((total_tick,3))
+    rfoot = np.zeros((total_tick,3))
 
 def footStep(): 
     global foot_step
@@ -189,22 +240,225 @@ def comGenerator():
                     Cy1_ = Ky_ - A_
                     Cy2_ = Ky_ / (wn * t_double)                
                     if walking_tick[i] < t_start + t_double_1:
-                        ref_com[int(walking_tick[i]),0] = (foot_step[current_step_num,0] + foot_step[current_step_num,0]) / 2 + (Kx_ / t_double_1) * (walking_tick[i] - t_start)
+                        ref_com[int(walking_tick[i]),0] = (foot_step[current_step_num-1,0] + foot_step[current_step_num,0]) / 2 + (Kx_ / t_double_1) * (walking_tick[i] - t_start)
                         ref_com[int(walking_tick[i]),1] = Ky_ / t_double_1 * (walking_tick[i]- t_start)
                     elif walking_tick[i] < t_last - t_double_2:
-                        ref_com[int(walking_tick[i]),0] = foot_step(current_step_num,0)
+                        ref_com[int(walking_tick[i]),0] = foot_step[current_step_num,0]
                         ref_com[int(walking_tick[i]),1] = Cy1_ * np.cosh(wn*((walking_tick[i] - t_start)/hz - t_double)) + Cy2_ * np.sinh(wn*((walking_tick[i] - t_start)/hz - t_double)) + A_
                     elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
-                        ref_com[int(walking_tick[i]),0] = foot_step(current_step_num,0) 
-                        ref_com[int(walking_tick[i]),1] = (Ky_ / t_double_2) * (t_total - (walking_tick[i] - t_start));
+                        ref_com[int(walking_tick[i]),0] = foot_step[current_step_num,0] 
+                        ref_com[int(walking_tick[i]),1] = (Ky_ / t_double_2) * (t_total - (walking_tick[i] - t_start))
             elif walking_tick[i] > t_last:
                 ref_com[walking_tick[i],0] = foot_step[current_step_num,0]
                 ref_com[walking_tick[i],1] = 0
+
+    t_start = t_temp + 1
+    t_last = t_temp + t_total
+    current_step_num = 0
                 
 
 def swingFootGenerator():
     print("foot")
+    global current_step_num, t_start, t_last
+    for i in range(0, total_tick):
+        walking_tick[i] = i
+        if walking_tick[i] <= t_temp:
+            phase_variable[int(walking_tick[i])] = 1
 
+            if walking_tick[i] < 0.5 * hz:
+                lfoot[int(walking_tick[i]),0] = LF_tran[0]
+                lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                rfoot[int(walking_tick[i]),0] = RF_tran[0]
+                rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                rfoot[int(walking_tick[i]),2] = RF_tran[2]
+            elif walking_tick[i] < 1.5 * hz:
+                del_x = walking_tick[i] - 0.5 * hz
+                lfoot[int(walking_tick[i]),0] = LF_tran[0]
+                lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                rfoot[int(walking_tick[i]),0] = RF_tran[0]
+                rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                rfoot[int(walking_tick[i]),2] = RF_tran[2]
+            else:
+                lfoot[int(walking_tick[i]),0] = LF_tran[0]
+                lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                rfoot[int(walking_tick[i]),0] = RF_tran[0]
+                rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                rfoot[int(walking_tick[i]),2] = RF_tran[2]
+        elif walking_tick[i] <= t_last:
+            if current_step_num == 0:
+                if walking_tick[i] < t_start + t_double_1:
+                    phase_variable[int(walking_tick[i])] = 1
+                    rfoot[int(walking_tick[i]),0] = RF_tran[0]
+                    rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                    rfoot[int(walking_tick[i]),2] = RF_tran[2]
+                elif (walking_tick[i] < t_last - t_double_2) and (walking_tick[i] >= t_start + t_double_1):
+                    phase_variable[int(walking_tick[i])] = 3
+                    rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                    if walking_tick[i] < (t_start+t_last)/2:
+                        rfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], t_start + t_double_1, (t_start + t_double_1 + t_last - t_double_2)/2, RF_tran[2], 0.0, 0.0, RF_tran[2] + foot_height, 0.0, 0.0)
+                    elif walking_tick[i] < t_last:
+                        rfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], (t_start + t_double_1 + t_last - t_double_2)/2, t_last - t_double_2, RF_tran[2] + foot_height, 0.0, 0.0, RF_tran[2], 0.0, 0.0)
+                
+                    rfoot[int(walking_tick[i]),0] = quinticSpline(walking_tick[i], t_start + t_double_1, t_last - t_double_2, RF_tran[0], 0.0, 0.0, foot_step[current_step_num + 1, 0], 0.0, 0.0) 
+                       
+                elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                    phase_variable[int(walking_tick[i])] = 1
+                    rfoot[int(walking_tick[i]),0] = foot_step[current_step_num + 1, 0]
+                    rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                    rfoot[int(walking_tick[i]),2] = RF_tran[2] 
+
+                lfoot[int(walking_tick[i]),0] = LF_tran[0]
+                lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                if walking_tick[i] == t_last:
+                    current_step_num = current_step_num + 1
+                    t_start = t_start + t_total
+                    t_last = t_last + t_total
+            elif current_step_num < foot_step_number:
+                if current_step_num % 2 == 1:
+                    if walking_tick[i] < t_start + t_double_1:
+                        phase_variable[int(walking_tick[i])] = 1 
+                        lfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1, 0]
+                        lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                        lfoot[int(walking_tick[i]),2] = LF_tran[2]
+                    elif (walking_tick[i] < t_last - t_double_2) and (walking_tick[i] >= t_start + t_double_1):
+                        phase_variable[int(walking_tick[i])] = 2 
+                        lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                        if walking_tick[i] < (t_start+t_last)/2:
+                            lfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], t_start + t_double_1, (t_start + t_double_1 + t_last - t_double_2)/2, LF_tran[2], 0.0, 0.0, LF_tran[2] + foot_height, 0.0, 0.0)
+                        elif walking_tick[i] < t_last:
+                            lfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], (t_start + t_double_1 + t_last - t_double_2)/2, t_last - t_double_2, LF_tran[2] + foot_height, 0.0, 0.0, LF_tran[2], 0.0, 0.0)    
+                        
+                        lfoot[int(walking_tick[i]),0] = quinticSpline(walking_tick[i], t_start + t_double_1, t_last - t_double_2, foot_step[current_step_num - 1, 0], 0.0, 0.0, foot_step[current_step_num + 1, 0], 0.0, 0.0) 
+                    elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                        phase_variable[int(walking_tick[i])] = 1 
+                        lfoot[int(walking_tick[i]),0] = foot_step[current_step_num + 1, 0]
+                        lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                        lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                    rfoot[int(walking_tick[i]),0] = foot_step[current_step_num,0]
+                    rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                    rfoot[int(walking_tick[i]),2] = RF_tran[2]
+
+                    if walking_tick[i] == t_last:
+                        current_step_num = current_step_num + 1
+                        t_start = t_start + t_total
+                        t_last = t_last + t_total
+                elif current_step_num % 2 == 0:
+                    if walking_tick[i] < t_start + t_double_1:
+                        phase_variable[int(walking_tick[i])] = 1 
+                        rfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1, 0]
+                        rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                        rfoot[int(walking_tick[i]),2] = RF_tran[2]
+                    elif (walking_tick[i] < t_last - t_double_2) and (walking_tick[i] >= t_start + t_double_1):
+                        phase_variable[int(walking_tick[i])] = 2 
+                        rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                        if walking_tick[i] < (t_start+t_last)/2:
+                            rfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], t_start + t_double_1, (t_start + t_double_1 + t_last - t_double_2)/2, RF_tran[2], 0.0, 0.0, RF_tran[2] + foot_height, 0.0, 0.0)
+                        elif walking_tick[i] < t_last:
+                            rfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], (t_start + t_double_1 + t_last - t_double_2)/2, t_last - t_double_2, RF_tran[2] + foot_height, 0.0, 0.0, RF_tran[2], 0.0, 0.0)    
+                        
+                        rfoot[int(walking_tick[i]),0] = quinticSpline(walking_tick[i], t_start + t_double_1, t_last - t_double_2, foot_step[current_step_num - 1, 0], 0.0, 0.0, foot_step[current_step_num + 1, 0], 0.0, 0.0) 
+                    elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                        phase_variable[int(walking_tick[i])] = 1 
+                        rfoot[int(walking_tick[i]),0] = foot_step[current_step_num + 1, 0]
+                        rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                        rfoot[int(walking_tick[i]),2] = RF_tran[2]
+
+                    lfoot[int(walking_tick[i]),0] = foot_step[current_step_num,0]
+                    lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                    lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                    if walking_tick[i] == t_last:
+                        current_step_num = current_step_num + 1
+                        t_start = t_start + t_total
+                        t_last = t_last + t_total
+            elif current_step_num == foot_step_number:
+                if final_step_length == 0:
+                    if current_step_num % 2 == 1:
+                        if walking_tick[i] < t_start + t_double_1:
+                            phase_variable[int(walking_tick[i])] = 1 
+                            lfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1, 0]
+                            lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                            lfoot[int(walking_tick[i]),2] = LF_tran[2]
+                        elif (walking_tick[i] < t_last - t_double_2) and (walking_tick[i] >= t_start + t_double_1):
+                            phase_variable[int(walking_tick[i])] = 2 
+                            lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                            if walking_tick[i] < (t_start+t_last)/2:
+                                lfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], t_start + t_double_1, (t_start + t_double_1 + t_last - t_double_2)/2, LF_tran[2], 0.0, 0.0, LF_tran[2] + foot_height, 0.0, 0.0)
+                            elif walking_tick[i] < t_last:
+                                lfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], (t_start + t_double_1 + t_last - t_double_2)/2, t_last - t_double_2, LF_tran[2] + foot_height, 0.0, 0.0, LF_tran[2], 0.0, 0.0)    
+                            
+                            lfoot[int(walking_tick[i]),0] = quinticSpline(walking_tick[i], t_start + t_double_1, t_last - t_double_2, foot_step[current_step_num - 1, 0], 0.0, 0.0, foot_step[current_step_num, 0], 0.0, 0.0) 
+                        elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                            phase_variable[int(walking_tick[i])] = 1 
+                            lfoot[int(walking_tick[i]),0] = foot_step[current_step_num, 0]
+                            lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                            lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                        rfoot[int(walking_tick[i]),0] = foot_step[current_step_num,0]
+                        rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                        rfoot[int(walking_tick[i]),2] = RF_tran[2]
+
+                        if walking_tick[i] == t_last:
+                            current_step_num = current_step_num + 1
+                            t_start = t_start + t_total
+                            t_last = t_last + t_total
+                    elif current_step_num % 2 == 0: ##need revise
+                        if walking_tick[i] < t_start + t_double_1:
+                            phase_variable[int(walking_tick[i])] = 1 
+                            rfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1, 0]
+                            rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                            rfoot[int(walking_tick[i]),2] = RF_tran[2]
+                        elif (walking_tick[i] < t_last - t_double_2) and (walking_tick[i] >= t_start + t_double_1):
+                            phase_variable[int(walking_tick[i])] = 2 
+                            rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                            if walking_tick[i] < (t_start+t_last)/2:
+                                rfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], t_start + t_double_1, (t_start + t_double_1 + t_last - t_double_2)/2, RF_tran[2], 0.0, 0.0, RF_tran[2] + foot_height, 0.0, 0.0)
+                            elif walking_tick[i] < t_last:
+                                rfoot[int(walking_tick[i]),2] = quinticSpline(walking_tick[i], (t_start + t_double_1 + t_last - t_double_2)/2, t_last - t_double_2, RF_tran[2] + foot_height, 0.0, 0.0, RF_tran[2], 0.0, 0.0)    
+                            
+                            rfoot[int(walking_tick[i]),0] = quinticSpline(walking_tick[i], t_start + t_double_1, t_last - t_double_2, foot_step[current_step_num - 1, 0], 0.0, 0.0, foot_step[current_step_num, 0], 0.0, 0.0) 
+                        elif (walking_tick[i] <= t_last) and (walking_tick[i] >= t_last - t_double_2):
+                            phase_variable[int(walking_tick[i])] = 1 
+                            rfoot[int(walking_tick[i]),0] = foot_step[current_step_num, 0]
+                            rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                            rfoot[int(walking_tick[i]),2] = RF_tran[2]
+
+                        lfoot[int(walking_tick[i]),0] = foot_step[current_step_num,0]
+                        lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                        lfoot[int(walking_tick[i]),2] = LF_tran[2]
+
+                        if walking_tick[i] == t_last:
+                            current_step_num = current_step_num + 1
+                            t_start = t_start + t_total
+                            t_last = t_last + t_total
+                else:
+                    print("non")
+            else:
+                phase_variable[int(walking_tick[i])] = 1 
+                lfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1,0]
+                lfoot[int(walking_tick[i]),1] = LF_tran[1]
+                lfoot[int(walking_tick[i]),2] = LF_tran[2]
+                rfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1,0]
+                rfoot[int(walking_tick[i]),1] = RF_tran[1]
+                rfoot[int(walking_tick[i]),2] = RF_tran[2]
+        else:
+            phase_variable[int(walking_tick[i])] = 1 
+            lfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1,0]
+            lfoot[int(walking_tick[i]),1] = LF_tran[1]
+            lfoot[int(walking_tick[i]),2] = LF_tran[2]
+            rfoot[int(walking_tick[i]),0] = foot_step[current_step_num - 1,0]
+            rfoot[int(walking_tick[i]),1] = RF_tran[1]
+            rfoot[int(walking_tick[i]),2] = RF_tran[2]
+                           
 def inverseKinematics(LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV_tran_c, HRR_tran_init_c, HLR_tran_init_c, HRR_rot_init_c, HLR_rot_init_c, PELV_tran_init_c, PELV_rot_init_c, CPELV_tran_init_c):
     global leg_q, leg_qdot, leg_qddot
     M_PI = 3.14159265358979323846
@@ -492,6 +746,8 @@ def talker():
     modelInitialize()
     walkingSetup()
     footStep()
+    print(foot_step)
+    print(foot_step_number)
     zmpGenerator()
     comGenerator()
     swingFootGenerator()
@@ -501,6 +757,9 @@ def talker():
     jointUpdate()
     modelUpdate(q_command,qdot_command,qddot_command)
     estimateContactForce(qddot_command)
+
+    plt.plot(walking_tick, rfoot[:,2])
+    plt.show()
   
 if __name__=='__main__':
     talker()
