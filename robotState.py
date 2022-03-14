@@ -800,12 +800,12 @@ def talker():
         PELV_tran[2] = PELV_tran_init[2]
         contactState = phase_variable[i]
         inverseKinematics(LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
-        #leg_q_write[i,:] = leg_q
-        #f.write("%s" % leg_q[0])
-        #f.write("%s %s %s %s %s %s %s %s %s %s %s %s \n" % (leg_q[0] leg_q[1] leg_q[2] leg_q[3] leg_q[4] leg_q[5] leg_q[6] leg_q[7] leg_q[8] leg_q[9] leg_q[10] leg_q[11]))
         jointUpdate()
         modelUpdate(q_command,qdot_command,qddot_command)
         estimateContactForce(qddot_command)
+        for i in range(0,12):
+                f.write('%f ' % leg_q[i])
+        f.write("\n")
 
         #calMargin()
     plt.plot(walking_tick, ref_com[:,0])
