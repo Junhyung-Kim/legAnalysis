@@ -180,7 +180,7 @@ def comGenerator():
     for i in range(0, total_tick):
         walking_tick[i] = i
         if walking_tick[i] <= t_temp:
-            ref_com[int(walking_tick[i]),0] = LF_tran[0]
+            ref_com[int(walking_tick[i]),0] = PELV_tran[0]
             ref_com[int(walking_tick[i]),1] = 0
         elif walking_tick[i] <= t_last:
             if current_step_num == 0:
@@ -249,8 +249,11 @@ def comGenerator():
                         ref_com[int(walking_tick[i]),0] = foot_step[current_step_num,0] 
                         ref_com[int(walking_tick[i]),1] = (Ky_ / t_double_2) * (t_total - (walking_tick[i] - t_start))
             elif walking_tick[i] > t_last:
-                ref_com[walking_tick[i],0] = foot_step[current_step_num,0]
-                ref_com[walking_tick[i],1] = 0
+                ref_com[int(walking_tick[i]),0] = foot_step[current_step_num,0]
+                ref_com[int(walking_tick[i]),1] = 0
+        else:
+            ref_com[int(walking_tick[i]),0] = foot_step[foot_step_number,0]
+            ref_com[int(walking_tick[i]),1] = 0
 
     t_start = t_temp + 1
     t_last = t_temp + t_total
@@ -716,7 +719,7 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
     robothc = np.matmul(np.transpose(robotJac),np.add(robotmuc, robotPc))
 
 def jointUpdate():
-    #q_command[0] = comx
+    q_command[0] = comx
     #qdot_command[0] = comdx
     #qddt_command[0] = comddx
 
@@ -782,16 +785,33 @@ def talker():
     comGenerator()
     swingFootGenerator()
 
-    inverseKinematics(LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
-    
-    jointUpdate()
-    modelUpdate(q_command,qdot_command,qddot_command)
-    estimateContactForce(qddot_command)
+    f = open("newfile.txt", 'w')
+    leg_q_write = np.zeros((total_tick, 12))
 
-    calMargin()
+    for i in range(0, total_tick):
+        LF_tran[0] = lfoot[i,0]
+        LF_tran[1] = lfoot[i,1]
+        LF_tran[2] = lfoot[i,2]
+        RF_tran[0] = rfoot[i,0]
+        RF_tran[1] = rfoot[i,1]
+        RF_tran[2] = rfoot[i,2]
+        PELV_tran[0] = ref_com[i,0]
+        PELV_tran[1] = ref_com[i,1]
+        PELV_tran[2] = PELV_tran_init[2]
+        contactState = phase_variable[i]
+        inverseKinematics(LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
+        #leg_q_write[i,:] = leg_q
+        #f.write("%s" % leg_q[0])
+        #f.write("%s %s %s %s %s %s %s %s %s %s %s %s \n" % (leg_q[0] leg_q[1] leg_q[2] leg_q[3] leg_q[4] leg_q[5] leg_q[6] leg_q[7] leg_q[8] leg_q[9] leg_q[10] leg_q[11]))
+        jointUpdate()
+        modelUpdate(q_command,qdot_command,qddot_command)
+        estimateContactForce(qddot_command)
 
-    plt.plot(walking_tick, rfoot[:,2])
+        #calMargin()
+    plt.plot(walking_tick, ref_com[:,0])
     plt.show()
-  
+    
+    f.close()
+
 if __name__=='__main__':
     talker()
