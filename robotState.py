@@ -88,7 +88,7 @@ def rotateWithX(roll_angle):
 def walkingSetup():
     global x_direction, y_direction, yaw_direction, step_length, hz, total_tick, t_total_t, t_start_real, t_temp_t, t_double, t_rest_1, t_rest_2, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
     global zc, wn, current_step_num, ref_zmp, ref_com, walking_tick, total_tick, phase_variable, lfoot, rfoot, foot_height, foot_step_dir
-    hz = 100
+    hz = 200
     x_direction = 1.00
     y_direction = 0.00
     yaw_direction = 0.00
@@ -589,7 +589,7 @@ def swingFootGenerator():
                     rfoot[i,2] = RF_tran[2]
                            
 def inverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV_tran_c, HRR_tran_init_c, HLR_tran_init_c, HRR_rot_init_c, HLR_rot_init_c, PELV_tran_init_c, PELV_rot_init_c, CPELV_tran_init_c):
-    global leg_q, leg_qdot, leg_qddot
+    global leg_q, leg_qdot, leg_qddot, leg_qs, leg_qdots, leg_qddots
     M_PI = 3.14159265358979323846
     leg_q = np.zeros(12)
     leg_qdot = np.zeros(12)
@@ -709,12 +709,9 @@ def inverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c
     else:
         leg_qdots[time,:] = np.subtract(leg_qs[time,:], leg_qs[time-1,:]) * hz
         leg_qddots[time,:] =np.subtract(leg_qdots[time,:], leg_qdots[time-1,:]) * hz
-
-    leg_qdot = leg_qdots[time,:]
-    leg_qddot = leg_qddots[time,:]
         
 def modelInitialize():
-    global model, foot_distance, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command
+    global model, foot_distance, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, LF_rot_init, RF_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command
     model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
@@ -864,16 +861,11 @@ def jointUpdate(time):
     qddot_command[1] = com_refddy[time]
 
     for i in range(7, 19):
-        q_command[i] = leg_q[i-7]
+        q_command[i] = leg_qs[time, i-7]
 
     for i in range(6, 18):
-        qdot_command[i] = leg_qdot[i-6]
-        qddot_command[i] = leg_qddot[i-6]
-
-    print(qdot_command)
-
-    print("a")
-    print(leg_qdot)
+        qdot_command[i] = leg_qdots[time, i-6]
+        qddot_command[i] = leg_qdots[time, i-6]
 
 def estimateContactForce(qddot_desired):
     global robotContactForce
@@ -949,10 +941,13 @@ def talker():
         
         contactState = phase_variable[i]
         inverseKinematics(i, LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
+        
+        
+    for i in range(0, int(total_tick)): 
         jointUpdate(i)
         modelUpdate(q_command,qdot_command,qddot_command)
         estimateContactForce(qddot_command)
-        print(i)
+        #print(i)
         
         #if(np.abs(robotContactForce[2])<2000):
         f.write('%f %f %f' % (robotContactForce[2], contactState, com_refy[i]))
