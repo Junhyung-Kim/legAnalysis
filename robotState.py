@@ -9,6 +9,8 @@ from sys import argv
 from scipy.interpolate import CubicSpline
 from os.path import dirname, join, abspath
 
+np.set_printoptions(threshold=sys.maxsize)
+
 def quinticSpline(time, time_0, time_f, x_0, x_dot_0, x_ddot_0, x_f, x_dot_f, x_ddot_f):
     time_s = time_f - time_0
     a1 = x_0
@@ -88,7 +90,7 @@ def rotateWithX(roll_angle):
 def walkingSetup():
     global x_direction, y_direction, yaw_direction, step_length, hz, total_tick, t_total_t, t_start_real, t_temp_t, t_double, t_rest_1, t_rest_2, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
     global zc, wn, current_step_num, ref_zmp, ref_com, walking_tick, total_tick, phase_variable, lfoot, rfoot, foot_height, foot_step_dir
-    hz = 200
+    hz = 20
     x_direction = 1.00
     y_direction = 0.00
     yaw_direction = 0.00
@@ -591,12 +593,13 @@ def swingFootGenerator():
 def inverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV_tran_c, HRR_tran_init_c, HLR_tran_init_c, HRR_rot_init_c, HLR_rot_init_c, PELV_tran_init_c, PELV_rot_init_c, CPELV_tran_init_c):
     global leg_q, leg_qdot, leg_qddot, leg_qs, leg_qdots, leg_qddots
     M_PI = 3.14159265358979323846
-    leg_q = np.zeros(12)
-    leg_qdot = np.zeros(12)
-    leg_qddot = np.zeros(12)
-    leg_qs = np.zeros((int(total_tick), 12))
-    leg_qdots = np.zeros((int(total_tick), 12))
-    leg_qddots = np.zeros((int(total_tick), 12))
+    if time == 0:
+        leg_q = np.zeros(12)
+        leg_qdot = np.zeros(12)
+        leg_qddot = np.zeros(12)
+        leg_qs = np.zeros((int(total_tick), 12))
+        leg_qdots = np.zeros((int(total_tick), 12))
+        leg_qddots = np.zeros((int(total_tick), 12))
 
     l_upper = 0.35
     l_lower = 0.35
@@ -708,7 +711,7 @@ def inverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c
         leg_qddots[time,:] = np.zeros(12)
     else:
         leg_qdots[time,:] = np.subtract(leg_qs[time,:], leg_qs[time-1,:]) * hz
-        leg_qddots[time,:] =np.subtract(leg_qdots[time,:], leg_qdots[time-1,:]) * hz
+        leg_qddots[time,:] = np.subtract(leg_qdots[time,:], leg_qdots[time-1,:]) * hz
         
 def modelInitialize():
     global model, foot_distance, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, LF_rot_init, RF_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command
@@ -784,7 +787,7 @@ def modelInitialize():
     foot_distance = LF_tran_init - RF_tran_init
 
 def modelUpdate(q_desired, qdot_desired, qddot_desired):
-    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, robotIc, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur
+    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur
     pinocchio.forwardKinematics(model, data, q_desired, qdot_desired, qddot_desired)
     pinocchio.updateFramePlacements(model,data)
     pinocchio.updateGlobalPlacements(model,data)
@@ -804,6 +807,7 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
     pinocchio.crba(model, data, q_desired)
     pinocchio.computeCoriolisMatrix(model, data, q_desired, qdot_desired)
     pinocchio.rnea(model, data, q_desired, qdot_z, qddot_z)
+    pinocchio.computeMinverse(model,data,q_desired)
 
     contactnum = 0
 
@@ -811,17 +815,14 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
         contactnum = 2
         robotJac = np.zeros((2 * 6, model.nv))
         robotdJac = np.zeros((2 * 6, model.nv))
-        robotIc = np.zeros((2 * 6, 2 * 6))
     elif contactState == 2:
         contactnum = 1
         robotJac = np.zeros((1 * 6, model.nv))
         robotdJac = np.zeros((1 * 6, model.nv))
-        robotIc = np.zeros((1 * 6, 1 * 6))
     else:
         contactnum = 1
         robotJac = np.zeros((1 * 6, model.nv))
         robotdJac = np.zeros((1 * 6, model.nv))
-        robotIc = np.zeros((1 * 6, 1 * 6))
 
     M = data.M
     COR = data.C
@@ -838,8 +839,12 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
 
     for i in range(0, contactnum):
         if i == 0:
-            robotJac[0:6,0:model.nv] = LF_cj
-            robotdJac[0:6,0:model.nv] = LF_cdj
+            if contactState == 2:
+                robotJac[0:6,0:model.nv] = RF_cj
+                robotdJac[0:6,0:model.nv] = RF_cdj
+            else:
+                robotJac[0:6,0:model.nv] = LF_cj
+                robotdJac[0:6,0:model.nv] = LF_cdj
         elif i == 1:
             robotJac[6:12,0:model.nv] = RF_cj
             robotdJac[6:12,0:model.nv] = RF_cdj
@@ -855,10 +860,8 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
 def jointUpdate(time):
     q_command[0] = com_refx[time]
     qdot_command[0] = com_refdx[time]
-    qddot_command[0] = com_refddx[time]
     q_command[1] = com_refy[time]
     qdot_command[1] = com_refdy[time]
-    qddot_command[1] = com_refddy[time]
 
     for i in range(7, 19):
         q_command[i] = leg_qs[time, i-7]
@@ -868,7 +871,7 @@ def jointUpdate(time):
         qddot_command[i] = leg_qdots[time, i-6]
 
 def estimateContactForce(qddot_desired):
-    global robotContactForce
+    global robotContactForce, robotTorque
     robotContactForce = pinocchio.utils.zero(12)
 
     robotTorque = np.matmul(np.linalg.pinv(robotNc),np.subtract(np.add(np.add(np.matmul(M,qddot_desired),b),G),robothc))
@@ -939,19 +942,19 @@ def talker():
         PELV_tran[1] = com_refy[i]
         PELV_tran[2] = PELV_tran_init[2]
         
-        contactState = phase_variable[i]
         inverseKinematics(i, LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
         
         
     for i in range(0, int(total_tick)): 
+        contactState = phase_variable[i]
         jointUpdate(i)
         modelUpdate(q_command,qdot_command,qddot_command)
         estimateContactForce(qddot_command)
-        #print(i)
+        print(i)
         
-        #if(np.abs(robotContactForce[2])<2000):
-        f.write('%f %f %f' % (robotContactForce[2], contactState, com_refy[i]))
-        f.write("\n")
+        if(np.abs(robotContactForce[2]) < 1000):
+            f.write('%f %f %f %f %f %f' % (robotContactForce[2], robotContactForce[8], robotTorque[1], robotTorque[2], lfoot[i,2], rfoot[i,2]))
+            f.write("\n")
         
         #calMargin()
     
