@@ -765,7 +765,7 @@ def contactRedistribution(eta_cust, footwidth, footlength, staticFrictionCoeff, 
     W1[3:6, 6:9] = skew(P2)
 
     ResultantForce = np.matmul(W1, F12)
-
+    
     eta_lb = 1.0 - eta_cust
     eta_ub = eta_cust
 
@@ -832,7 +832,7 @@ def contactRedistribution(eta_cust, footwidth, footlength, staticFrictionCoeff, 
         if (sol_eta1 > eta_lb):
             eta_lb = sol_eta1
 
-    eta_s = (-ResultantForce[3] - P2[2] * ResultantForce[1] + P2[2] * ResultantForce[2]) / ((P1[2] - P2[2]) * ResultantForce[1] - (P1[1] - P2[1]) * ResultantForce[2])
+    eta_s = (-ResultantForce[3] - P2[2] * ResultantForce[1] + P2[1] * ResultantForce[2]) / ((P1[2] - P2[2]) * ResultantForce[1] - (P1[1] - P2[1]) * ResultantForce[2])
 
     eta = eta_s 
     if (eta_s > eta_ub):
@@ -884,6 +884,7 @@ def contactRedistributionWalking(command_torque, eta, ratio, supportFoot):
         contactRedistribution(eta_cust, foot_width, foot_length, 1.0, 0.9, 0.9, np.matmul(Rotyaw, P1_), np.matmul(Rotyaw, P2_), F12)
         ResultantForce_ = ResultantForce
         ResultRedistribution_ = ForceRedistribution
+        
         fc_redist_ = np.matmul(np.transpose(force_rot_yaw), ResultRedistribution_)
 
         desired_force = np.zeros(12)
@@ -898,6 +899,7 @@ def contactRedistributionWalking(command_torque, eta, ratio, supportFoot):
         else:
             desired_force[6:12] = -ContactForce_[6:12] + ratio * fc_redist_[6:12]
             torque_contact = np.matmul(np.matmul(np.transpose(V2), np.linalg.inv(np.matmul(robotJcinvT[6:12, 6:model.nq], np.transpose(V2)))), desired_force[6:12])
+
     else:
         torque_contact = np.zeros(33)
 
@@ -1298,7 +1300,7 @@ def talker():
 
     f = open("newfile.txt", 'w')
     f1 = open("newfile1.txt", 'w')
-    
+
     for i in range(0, int(total_tick)):
         LF_tran[0] = lfoot[i,0]
         LF_tran[1] = lfoot[i,1]
