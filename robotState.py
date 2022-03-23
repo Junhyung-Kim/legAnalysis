@@ -127,24 +127,25 @@ def winvCalc(W):
 def walkingSetup():
     global x_direction, y_direction, yaw_direction, step_length, hz, total_tick, t_total_t, t_start_real, t_temp_t, t_double, t_rest_1, t_rest_2, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
     global zc, wn, current_step_num, ref_zmp, ref_com, time, total_tick, phase_variable, lfoot, rfoot, foot_height, foot_step_dir
-    hz = 50
-    x_direction = 1.00
+    hz = 100
+    x_direction = 1.50
     y_direction = 0.00
     yaw_direction = 0.00
-    step_length = 0.10
+    step_length = 0.30
     
-    t_total_t = 1.0
+    velocity_control = 0.6
+    t_total_t = 1.0 * velocity_control
     t_temp_t = 2.0
-    t_double = 0.2
+    t_double = 0.2 * velocity_control
     
     t_total = t_total_t * hz
     t_temp = t_temp_t * hz
     t_start = t_temp + 1
     t_last = t_temp + t_total
-    t_double_1 = 0.1 * hz
-    t_double_2 = 0.1 * hz
-    t_rest_1 = 0.1 * hz
-    t_rest_2 = 0.1 * hz
+    t_double_1 = 0.1 * hz * velocity_control
+    t_double_2 = 0.1 * hz * velocity_control
+    t_rest_1 = 0.1 * hz * velocity_control
+    t_rest_2 = 0.1 * hz * velocity_control
     t_start_real = t_start + t_rest_1
 
     foot_step_dir = 1
@@ -182,7 +183,7 @@ def footStep():
     middle_residual_length = l - middle_foot_step_number * dlength
     del_size = 1
     numberOfFootstep = init_totalstep_num * del_size + middle_foot_step_number * del_size + final_foot_step_number * del_size
-
+    
     if init_totalstep_num != 0 or np.abs(init_residual_angle) >= 0.0001:
         if init_totalstep_num % 2 == 0:
             numberOfFootstep = numberOfFootstep + 2
@@ -545,17 +546,18 @@ def cpGenerator():
                 else:
                     zmp_refy[i] = slopey * (t_total_t - tick)
                     zmp_refx[i] = (2*B - Kx) + slopex * (tick - (t_total_t - t_double)) + PELV_tran_init[0] + 2 * (current_step_num - 1)* B
-                if(i > 650):
-                    zmp_refx[i] = zmp_refx[650]
+                if(i > t_total * (foot_step_number - 1) + t_temp):
+                    zmp_refx[i] = zmp_refx[int(t_total * (foot_step_number - 1)  + t_temp)]
             else:
-                zmp_refx[i] = zmp_refx[650]  
+                zmp_refx[i] = zmp_refx[int(t_total * (foot_step_number - 1)  + t_temp)]  
             
-            if(tick % t_total_t == 0.0) and i > t_temp:
+            if(tick  > t_total_t - 1.0/hz) and i > t_temp:
                 current_step_num = current_step_num + 1
 
         else:
             zmp_refx[i] = PELV_tran_init[0]
             zmp_refy[i] = PELV_tran_init[1]
+        
     current_step_num = 0
     
 def comGenerator():
@@ -608,12 +610,12 @@ def comGenerator():
                 else:
                     com_refy[i] = slopey * (t_total_t - tick)
                     com_refx[i] = (2*B - Kx) + slopex * (tick - (t_total_t - t_double)) + PELV_tran_init[0] + 2 * (current_step_num - 1)* B
-                if(i > 650):
-                    com_refx[i] = com_refx[650]
+                if(i > t_total * (foot_step_number -1) + t_temp):
+                    com_refx[i] = com_refx[int(t_total * (foot_step_number - 1)  + t_temp)]
             else:
-                com_refx[i] = com_refx[650]
+                com_refx[i] = com_refx[int(t_total * (foot_step_number - 1)  + t_temp)]
 
-            if(tick % t_total_t == 0.0) and i > t_temp:
+            if(tick  > t_total_t - 1.0/hz ) and i > t_temp:
                 current_step_num = current_step_num + 1
             #com_refx[i] = wn / hz * capturePoint_refx[i] + (1 - wn / hz) * com_refx[i - 1]
             #com_refy[i] = wn / hz * capturePoint_refy[i] + (1 - wn / hz) * com_refy[i - 1]
@@ -1056,7 +1058,7 @@ def modelInitialize():
     data = model.createData()
     q = pinocchio.randomConfiguration(model)
     q_command = pinocchio.randomConfiguration(model)
-    q_init = [0.0, 0.0, 0.814175, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.56, 1.3, -0.73, 0.0, 0.0, 0.0, -0.56, 1.3, -0.73, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
+    q_init = [0.0, 0.0, 0.7457, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
 
     for i in range(0, len(q)):
         q[i] = q_init[i]
@@ -1173,6 +1175,7 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
     robotPc = np.matmul(robotJcinvT,G)
     robotW = np.matmul(Minv[6:model.nq-1,0:model.nq],robotNc[0:model.nq-1,6:6+33])
     robotWinv = np.linalg.pinv(robotW)
+    
     winvCalc(robotW)
     
     robotmuc = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac,Minv),b),np.matmul(robotdJac,qdot_desired)))
@@ -1207,22 +1210,22 @@ def phaseUpdata(time):
             if (current_step_num == foot_step_number):
                 current_step_num = foot_step_number - 1
 
-    if (time >= t_start_real + t_double_1 - 0.075 * hz and time <= t_start_real + t_double_1 + 0.015 * hz + 1 and current_step_num != 0):
+    if (time >= t_start_real + t_double_1 *0.25 and time <= t_start_real + t_double_1 * 1.15  + 1 and current_step_num != 0):
         phaseChange = True
         phaseChange1 = False
-        double2Single_pre = t_start_real + t_double_1 +  - 0.075 * hz
-        double2Single = t_start_real + t_double_1 +  + 0.015 * hz + 1
+        double2Single_pre = t_start_real + t_double_1 * 0.25
+        double2Single = t_start_real + t_double_1 * 1.15 + 1
     else:
         phaseChange = False
 
-    if (time >= t_start + t_total - t_rest_2 - t_double_2 and time <= t_start + t_total - t_rest_2 - t_double_2 + 0.1 * hz - 1 and current_step_num != 0 and phaseChange == False):
+    if (time >= t_start + t_total - t_rest_2 - t_double_2 and time <= t_start + t_total - t_rest_2 - t_double_2 + t_double_1 - 1 and current_step_num != 0 and phaseChange == False):
         phaseChange1 = True
         phaseChange = False
         single2Double_pre = t_start + t_total - t_rest_2 - t_double_2 + 1 
-        single2Double = t_start + t_total - t_rest_2 - t_double_2 + 0.1 * hz
+        single2Double = t_start + t_total - t_rest_2 - t_double_2 + t_double_1
     else:
         phaseChange1 = False
-        if (time < t_start_real + t_double_1 - 0.075 * hz and time > t_start_real + t_double_1 + 0.015 * hz + 1):
+        if (time < t_start_real + t_double_1 * 0.25 and time > t_start_real + t_double_1 * 1.15 + 1):
             phaseChange = False
 
 def estimateContactForce(time, qddot_desired):
@@ -1230,6 +1233,7 @@ def estimateContactForce(time, qddot_desired):
     robotContactForce = pinocchio.utils.zero(12)
     robotTorque = np.matmul(np.linalg.pinv(robotNc),np.subtract(np.add(np.add(np.matmul(M,qddot_desired),b),G),robothc))
 
+    
     if (phaseChange == True and phaseChange1 == False):
         rate = quinticSpline(time, double2Single_pre, double2Single, 1, 0, 0, 0, 0, 0)
         TorqueContact = contactRedistributionWalking(robotTorque, 0.0, rate, foot_step[current_step_num, 6])                
@@ -1245,8 +1249,11 @@ def estimateContactForce(time, qddot_desired):
             TorqueContact = contactRedistributionWalking(robotTorque, 0.0, rate, foot_step[current_step_num + 1, 6])
         else:
             TorqueContact = contactRedistributionWalking(robotTorque, 0.0, rate, foot_step[foot_step_number - 2, 6])
+    
+        TorqueContact = np.zeros(33)
 
     robotTorque[6:model.nq] = robotTorque[6:model.nq] + TorqueContact
+    
 
     if contactState == 1:
         robotContactForce = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
@@ -1258,11 +1265,12 @@ def estimateContactForce(time, qddot_desired):
         robotContactForce[6:12] = np.zeros(6)   
 
 def calMargin():
-    print("CalMargin")
+    global contact_margin
+    #print("CalMargin")
     contact_margin = np.zeros(10)
     mu_s = 0.3
-    lx = 1.0
-    ly = 0.5
+    lx = 0.26
+    ly = 0.1
 
     if contactState == 1:
         contact_margin[0] = robotContactForce[2]
@@ -1286,7 +1294,7 @@ def calMargin():
         contact_margin[1] = np.sqrt(robotContactForce[0] * robotContactForce[0] + robotContactForce[1] * robotContactForce[1]) - mu_s * abs(robotContactForce[2])
         contact_margin[2] = np.abs(robotContactForce[5]) - mu_s * np.abs(robotContactForce[2])
         contact_margin[3] = np.abs(robotContactForce[3]) - ly/2 * np.abs(robotContactForce[2])
-        contact_margin[4] = np.abs(robotContactForce[4]) - lx/2 * np.abs(robotContactForce[2])
+        contact_margin[4] = np.abs(robotContactForce[4]) - lx/2 * np.abs(robotContactForce[2])      
 
 def talker():
     modelInitialize()
@@ -1300,7 +1308,10 @@ def talker():
 
     f = open("newfile.txt", 'w')
     f1 = open("newfile1.txt", 'w')
+    f2 = open("newfile2.txt", 'w')
 
+    print (total_tick)
+    print (foot_step_number)
     for i in range(0, int(total_tick)):
         LF_tran[0] = lfoot[i,0]
         LF_tran[1] = lfoot[i,1]
@@ -1311,26 +1322,32 @@ def talker():
         PELV_tran[0] = com_refx[i]
         PELV_tran[1] = com_refy[i]
         PELV_tran[2] = PELV_tran_init[2]
+        f2.write('%f %f %f %f %f %f %f %f %f %f' % (zmp_refx[i], zmp_refy[i], com_refx[i], com_refy[i], com_refdx[i], com_refdy[i], lfoot[i,2], rfoot[i,0], rfoot[i,1], rfoot[i,2]))
+        f2.write("\n")
         
         inverseKinematics(i, LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
-         
+
     for i in range(0, int(total_tick)): 
         contactState = phase_variable[i]
         jointUpdate(i)
         modelUpdate(q_command,qdot_command,qddot_command)
         phaseUpdata(i)
         estimateContactForce(i, qddot_command)
-        print(i)
-
+        #print(q_command)
+        #print(i)
         if(np.abs(robotContactForce[2]) < 1000) and (np.abs(robotContactForce[8]) < 1000) and i != 101:
             #f.write('%f %f %f' % (robotTorque[8], robotTorque[9], i))
-            f.write('%f %f %f' % (robotContactForce[2], robotContactForce[8], contactState))
+            f1.write('%f %f %f %f %f %f' % (robotContactForce[0], robotContactForce[1], robotContactForce[2], robotContactForce[3], robotContactForce[4], robotContactForce[5]))
+            f1.write("\n")
+            calMargin()
+            f.write('%f %f %f %f %f %f %f %f %f %f' % (contact_margin[0], contact_margin[1], contact_margin[2], contact_margin[3], contact_margin[4], contact_margin[5], contact_margin[6], contact_margin[7], contact_margin[8], contact_margin[9]))
             f.write("\n")
-        
-        #calMargin()
-    
+
+   
     f.close()
     f1.close()
+    f2.close()
 
 if __name__=='__main__':
     talker()
+
