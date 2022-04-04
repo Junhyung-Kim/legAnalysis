@@ -165,9 +165,9 @@ def walkingSetup():
     C_lipm = np.mat((1, 0, -zc/9.81))
 
     Q_lipm = 1
-    R_lipm = 1e-6
+    R_lipm = 1e-5
 
-    t_preview = 1.2
+    t_preview = 1.6
     N_preview = int(t_preview/dt)
     K_lipm, f_lipm = calculatePreviewControlParams(A_lipm, B_lipm, C_lipm, Q_lipm, R_lipm, N_preview)
     Ks_lipm, Kx_lipm, G_lipm = calculatePreviewControlParams2(A_lipm, B_lipm, C_lipm, Q_lipm, R_lipm, N_preview)
@@ -1254,7 +1254,7 @@ def modelInitialize():
     foot_distance = LF_tran_init - RF_tran_init
 
 def modelUpdate(q_desired, qdot_desired, qddot_desired):
-    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robotW, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur, COM_tran_cur, RFc_tran_cur, LFc_tran_cur, robotWinv
+    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robotW, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur, COM_tran_cur, RFc_tran_cur, LFc_tran_cur, robotWinv, robotCAM
     pinocchio.forwardKinematics(model, data, q_desired, qdot_desired, qddot_desired)
     pinocchio.updateFramePlacements(model,data)
     pinocchio.updateGlobalPlacements(model,data)
@@ -1276,6 +1276,8 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
     pinocchio.rnea(model, data, q_desired, qdot_z, qddot_z)
     pinocchio.computeMinverse(model,data,q_desired)
     pinocchio.centerOfMass(model,data,False)
+    pinocchio.computeCentroidalMomentum(model,data, q_desired, qdot_desired)
+    robotCAM = data.hg
 
     COM_tran_cur = data.com[0]
     RFc_tran_cur = data.oMf[RFcframe_id].translation
