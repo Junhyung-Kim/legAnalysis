@@ -53,6 +53,48 @@ def quinticSpline(time, time_0, time_f, x_0, x_dot_0, x_ddot_0, x_f, x_dot_f, x_
       result = x_f
 
     return result
+def quinticSplineDot(time, time_0, time_f, x_0, x_dot_0, x_ddot_0, x_f, x_dot_f, x_ddot_f):
+    time_s = time_f - time_0
+    a1 = x_0
+    a2 = x_dot_0
+    a3 = x_ddot_0 / 2.0
+
+    Temp = np.zeros((3,3))
+    R_temp = np.zeros(3)
+
+    Temp[0,0] = math.pow(time_s, 3)
+    Temp[0,1] = math.pow(time_s, 4)
+    Temp[0,2] = math.pow(time_s, 5)
+    Temp[1,0] = 3.0 * math.pow(time_s, 2)
+    Temp[1,1] = 4.0 * math.pow(time_s, 3)
+    Temp[1,2] = 5.0 * math.pow(time_s, 4)
+    Temp[2,0] = 6.0 * time_s
+    Temp[2,1] = 12.0 * math.pow(time_s, 2)
+    Temp[2,2] = 20.0 * math.pow(time_s, 3)
+
+    R_temp[0] = x_f - x_0 - x_dot_0 * time_s - x_ddot_0 * math.pow(time_s, 2) / 2.0
+    R_temp[1] = x_dot_f - x_dot_0 - x_ddot_0 * time_s
+    R_temp[2] = x_ddot_f - x_ddot_0
+
+    RES = np.matmul(np.linalg.inv(Temp), R_temp)
+
+    a4 = RES[0]
+    a5 = RES[1]
+    a6 = RES[2]
+
+    time_fs = time - time_0
+
+    position = a1 + a2 * math.pow(time_fs, 1) + a3 * math.pow(time_fs, 2) + a4 * math.pow(time_fs, 3) + a5 * math.pow(time_fs, 4) + a6 * math.pow(time_fs, 5)
+    velocity = a2 + 2.0 * a3 * math.pow(time_fs, 1) + 3.0 * a4 * math.pow(time_fs, 2) + 4.0 * a5 * math.pow(time_fs, 3) + 5.0 * a6 * math.pow(time_fs, 4);
+    
+    result = velocity
+
+    if time < time_0:
+      result = x_dot_0
+    elif time > time_f:
+      result = x_dot_f
+
+    return result
 
 def rotateWithY(pitch_angle):
     rotate_with_y = np.zeros((3,3))
@@ -128,12 +170,12 @@ def walkingSetup():
     global x_direction, y_direction, yaw_direction, step_length, hz, total_tick, t_total_t, t_start_real, t_temp_t, t_double, t_rest_1, t_rest_2, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
     global zc, wn, current_step_num, ref_zmp, ref_com, time, total_tick, phase_variable, lfoot, rfoot, foot_height, foot_step_dir, A_lipm, B_lipm, C_lipm, K_lipm, f_lipm, Ks_lipm, Kx_lipm, G_lipm, N_preview
     hz = 500
-    x_direction = 0.5
+    x_direction = 1.0
     y_direction = 0.00
     yaw_direction = 0.00
-    step_length = 0.1
+    step_length = 0.2
     
-    velocity_control = 1.0
+    velocity_control = 0.4
     t_total_t = 1.0 * velocity_control
     t_temp_t = 2.0
     t_double = 0.2 * velocity_control
@@ -158,21 +200,19 @@ def walkingSetup():
 
     dt = 1/float(hz)
 
-    A_lipm = np.mat(([1, dt, dt**2/2],
+    A_lipm = np.mat(([1, dt, 0],
                 [0, 1, dt],
                 [0, 0, 1]))
-    B_lipm = np.mat((dt**3/6, dt**2/2, dt)).T
+    B_lipm = np.mat((0, 0, dt)).T
     C_lipm = np.mat((1, 0, -zc/9.81))
 
     Q_lipm = 1
-    R_lipm = 1e-5
+    R_lipm = 1e-6
 
-    t_preview = 1.6
+    t_preview = 1.6 * velocity_control
     N_preview = int(t_preview/dt)
     K_lipm, f_lipm = calculatePreviewControlParams(A_lipm, B_lipm, C_lipm, Q_lipm, R_lipm, N_preview)
     Ks_lipm, Kx_lipm, G_lipm = calculatePreviewControlParams2(A_lipm, B_lipm, C_lipm, Q_lipm, R_lipm, N_preview)
-
-    print(K_lipm)
 
 def footStep(): 
     global foot_step_number, foot_step
@@ -523,9 +563,7 @@ def cpGenerator():
         else:
             zmp_refx[i] = (capturePoint_refx[i - 1]) - (capturePoint_refx[i] - capturePoint_refx[i - 1]) * hz / (wn)
             zmp_refy[i] = (capturePoint_refy[i - 1]) - (capturePoint_refy[i] - capturePoint_refy[i - 1]) * hz / (wn)
-        '''
-        '''
-
+    
         for i in range(0,(int(t_total * (foot_step_number + 1) + t_temp - 1))):
             if((i % 50) > 40 or (i % 50) < 1) and i < 790:
                 if(i % 50 == 41):
@@ -539,7 +577,8 @@ def cpGenerator():
                 if(i > 30):
                     zmp_refx[i] = (zmpxfd - zmpxsd)/9.0 * (i - zmpxs) + zmpxsd
                     zmp_refy[i] = (zmpyfd - zmpysd)/9.0 * (i - zmpxs) + zmpysd
-        '''
+
+        '''    
         if (i>t_temp):
             tick = (i-t_temp)/hz - t_total_t * current_step_num
             if(current_step_num == 0):
@@ -590,6 +629,7 @@ def cpGenerator():
             zmp_refx[i] = PELV_tran_init[0]
             zmp_refy[i] = PELV_tran_init[1]     
     current_step_num = 0
+    
     
 def calculatePreviewControlParams(A, B, C, Q, R, N):
     P = scipy.linalg.solve_discrete_are(A, B, C.T*Q*C, R)
@@ -731,10 +771,17 @@ def comGenerator():
             com_refddy[i] = COM_y_1[2,i]
 
         else:
+            '''
             com_refx[i] = PELV_tran_init[0]
             com_refy[i] = PELV_tran_init[1]
             COM_x_1[0,i + 1] = PELV_tran_init[0]
             COM_y_1[0,i + 1] = PELV_tran_init[1]
+            '''
+            com_refx[i] = COM_tran_init[0]
+            com_refy[i] = COM_tran_init[1]
+            COM_x_1[0,i + 1] = COM_tran_init[0]
+            COM_y_1[0,i + 1] = COM_tran_init[1]
+            
             com_refdx[i] = 0.0
             com_refdy[i] = 0.0
             com_refddx[i] = 0.0
@@ -746,11 +793,13 @@ def comGenerator():
     current_step_num = 0                
 
 def swingFootGenerator():
-    global lfoot, rfoot, phase_variable
+    global lfoot, rfoot, lfootd, rfootd, phase_variable
     phase_variable = np.zeros(int(total_tick))
     lfoot = np.zeros((int(total_tick),3))
     rfoot = np.zeros((int(total_tick),3))
 
+    lfootd = np.zeros((int(total_tick),3))
+    rfootd = np.zeros((int(total_tick),3))
     for i in range(0, int(t_total * (foot_step_number + 1) + t_temp - 1)):
         phase_variable[i] = 1
         if (i < t_start_real + t_double_1):
@@ -785,10 +834,14 @@ def swingFootGenerator():
                         lfoot[i,2] = LF_tran[2]
                         rfoot[i,1] = RF_tran[1]
                         rfoot[i,0] = quinticSpline(i, t_start_real + t_total + t_double_1, t_start + t_total * 2 - t_rest_2 - t_double_2, RF_tran[0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0)
+                        rfootd[i,0] = quinticSplineDot(i, t_start_real + t_total + t_double_1, t_start + t_total * 2 - t_rest_2 - t_double_2, RF_tran[0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0) * hz
+                        
                         if (i < t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0):
                             rfoot[i,2] = quinticSpline(i, t_start_real + t_total + t_double_1, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2) / 2, RF_tran[2], 0.0, 0.0, RF_tran[2] + foot_height, 0.0, 0.0)               
+                            rfootd[i,2] = quinticSplineDot(i, t_start_real + t_total + t_double_1, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2) / 2, RF_tran[2], 0.0, 0.0, RF_tran[2] + foot_height, 0.0, 0.0) * hz            
                         else:
                             rfoot[i,2] = quinticSpline(i, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total + t_total - t_rest_2 - t_double_2, RF_tran[2] + foot_height, 0.0, 0.0, RF_tran[2], 0.0, 0.0)
+                            rfootd[i,2] = quinticSplineDot(i, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total + t_total - t_rest_2 - t_double_2, RF_tran[2] + foot_height, 0.0, 0.0, RF_tran[2], 0.0, 0.0) * hz
                         if(i >= t_start_real + t_total + t_double_1) and ( i <= t_start + t_total + t_total - t_rest_2 - t_double_2):
                             phase_variable[i] = 3
                     else:
@@ -798,11 +851,14 @@ def swingFootGenerator():
 
                         lfoot[i,1] = LF_tran[1]
                         lfoot[i,0] = quinticSpline(i, t_start_real + t_total + t_double_1, t_start + t_total * 2 - t_rest_2 - t_double_2, LF_tran[0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0)
-                        
+                        lfootd[i,0] = quinticSplineDot(i, t_start_real + t_total + t_double_1, t_start + t_total * 2 - t_rest_2 - t_double_2, LF_tran[0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0) * hz
+
                         if (i < t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0):
                             lfoot[i,2] = quinticSpline(i, t_start_real + t_total + t_double_1, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2, LF_tran[2], 0.0, 0.0, LF_tran[2] + foot_height, 0.0, 0.0)
+                            lfootd[i,2] = quinticSplineDot(i, t_start_real + t_total + t_double_1, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2, LF_tran[2], 0.0, 0.0, LF_tran[2] + foot_height, 0.0, 0.0) * hz
                         else:
                             lfoot[i,2] = quinticSpline(i, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total + t_total - t_rest_2 - t_double_2, LF_tran[2] + foot_height, 0.0, 0.0, LF_tran[2], 0.0, 0.0)
+                            lfootd[i,2] = quinticSplineDot(i, t_start_real + t_total + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total + t_total - t_rest_2 - t_double_2, LF_tran[2] + foot_height, 0.0, 0.0, LF_tran[2], 0.0, 0.0) * hz
             
                         if(i >= t_start_real + t_total + t_double_1) and ( i <= t_start + t_total + t_total - t_rest_2 - t_double_2):
                             phase_variable[i] = 2
@@ -830,10 +886,14 @@ def swingFootGenerator():
                         lfoot[i,0] = foot_step[j - 1, 0]
                         lfoot[i,2] = LF_tran[2]
                         rfoot[i,0] = quinticSpline(i, t_start_real + t_total * j + t_double_1, t_start + t_total * (j + 1) - t_rest_2 - t_double_2, foot_step[j - 2, 0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0)
+                        rfootd[i,0] = quinticSplineDot(i, t_start_real + t_total * j + t_double_1, t_start + t_total * (j + 1) - t_rest_2 - t_double_2, foot_step[j - 2, 0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0) * hz
+                        
                         if (i < t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0):
                             rfoot[i,2] = quinticSpline(i, t_start_real + t_total * j + t_double_1, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2, LF_tran[2], 0.0, 0.0, RF_tran[2] + foot_height, 0.0, 0.0)
+                            rfootd[i,2] = quinticSplineDot(i, t_start_real + t_total * j + t_double_1, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2, LF_tran[2], 0.0, 0.0, RF_tran[2] + foot_height, 0.0, 0.0) * hz
                         else:
                             rfoot[i,2] = quinticSpline(i, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total * j + t_total - t_rest_2 - t_double_2, RF_tran[2] + foot_height, 0.0, 0.0, RF_tran[2], 0.0, 0.0)
+                            rfootd[i,2] = quinticSplineDot(i, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total * j + t_total - t_rest_2 - t_double_2, RF_tran[2] + foot_height, 0.0, 0.0, RF_tran[2], 0.0, 0.0) * hz
                         if(i >= t_start_real + t_total * j + t_double_1) and ( i <=  t_start + t_total * j + t_total - t_rest_2 - t_double_2):
                             phase_variable[i] = 3
                     else:
@@ -842,10 +902,14 @@ def swingFootGenerator():
                         rfoot[i,0] = foot_step[j - 1, 0]
                         rfoot[i,2] = RF_tran[2]
                         lfoot[i,0] = quinticSpline(i, t_start_real + t_total * j + t_double_1, t_start + t_total * (j + 1) - t_rest_2 - t_double_2, foot_step[j - 2, 0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0)
+                        lfootd[i,0] = quinticSplineDot(i, t_start_real + t_total * j + t_double_1, t_start + t_total * (j + 1) - t_rest_2 - t_double_2, foot_step[j - 2, 0], 0.0, 0.0, foot_step[j, 0], 0.0, 0.0) * hz
+            
                         if (i < t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0):
                             lfoot[i,2] = quinticSpline(i, t_start_real + t_total * j + t_double_1, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2, LF_tran[2], 0.0, 0.0, LF_tran[2] + foot_height, 0.0, 0.0)
+                            lfootd[i,2] = quinticSplineDot(i, t_start_real + t_total * j + t_double_1, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2, LF_tran[2], 0.0, 0.0, LF_tran[2] + foot_height, 0.0, 0.0) * hz
                         else:
                             lfoot[i,2] = quinticSpline(i, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total * j + t_total - t_rest_2 - t_double_2, LF_tran[2] + foot_height, 0.0, 0.0, LF_tran[2], 0.0, 0.0)
+                            lfootd[i,2] = quinticSplineDot(i, t_start_real + t_total * j + t_double_1 + (t_total - t_rest_1 - t_rest_2 - t_double_1 - t_double_2 ) / 2.0, t_start + t_total * j + t_total - t_rest_2 - t_double_2, LF_tran[2] + foot_height, 0.0, 0.0, LF_tran[2], 0.0, 0.0) * hz
                         if(i >= t_start_real + t_total * j + t_double_1) and ( i <=  t_start + t_total * j + t_total - t_rest_2 - t_double_2):
                             phase_variable[i] = 2
             elif (j == foot_step_number):
@@ -1180,9 +1244,112 @@ def inverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c
         leg_qdots[time,:] = np.subtract(leg_qs[time,:], leg_qs[time-1,:]) * hz
         leg_qddots[time,:] = np.subtract(leg_qdots[time,:], leg_qdots[time-1,:]) * hz
         
+def comJacobianinverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c, RF_tran_c, PELV_tran_c, HRR_tran_init_c, HLR_tran_init_c, HRR_rot_init_c, HLR_rot_init_c, PELV_tran_init_c, PELV_rot_init_c, CPELV_tran_init_c):
+    if(foot_step[current_step_num,6] == 1):
+        r_c1 = np.subtract(COM_tran_cur, LF_tran_cur)
+        skew_r_c1 = skew(r_c1)
+        adjoint_ = np.zeros((6,6))
+        adjoint_[0:3, 0:3] = PELV_rot
+        adjoint_[3:6, 3:6] = PELV_rot
+        j1 = np.matmul(adjoint_,LF_j[:,6:12])
+        j2 = np.matmul(adjoint_,RF_j[:,12:18])
+
+        j1_v = j1[0:3,0:6]
+        j1_w = j1[3:6,0:6]
+
+        skew_r2_r1 = skew(np.matmul(PELV_rot, np.subtract(LF_tran_cur,RF_tran_cur)))
+        adjoint_21 = np.identity(6)
+        adjoint_21[0:3, 3:6] = skew_r2_r1
+
+        err_foot = np.zeros(3)
+        #err_foot = np.subtract(rfoot[time,:], RF_tran_cur)
+        err_com = np.zeros(3)
+        #err_com[0] = com_refx[time] - COM_tran_cur[0]
+        #err_com[1] = com_refy[time] - COM_tran_cur[1]
+        #err_com[2] = - COM_tran_cur[2]
+
+        x2_d_dot_ = np.zeros(6)
+        x2_d_dot_[0:3] = np.add(rfootd[time,0:3], 0.8 * err_foot)
+
+        jlleg_com = Jcom[0:3, 6:12]
+        jrleg_com = Jcom[0:3, 12:18]
+        j_com_psem_ = np.add(np.add(np.add(-j1_v, np.matmul(skew_r_c1,j1_w)), jlleg_com), np.matmul(np.matmul(np.matmul(jrleg_com, np.linalg.inv(j2)),adjoint_21),j1))
+        
+        desired_u_dot = np.zeros(3)
+        desired_u_dot[0] = com_refdx[time] + 0.8 * err_com[0]
+        desired_u_dot[1] = com_refdy[time] + 0.8 * err_com[1]
+        desired_u_dot[2] = 0.0 + 0.8 * err_com[2]
+
+        c_dot_psem_ = np.subtract(desired_u_dot,np.matmul(np.matmul(jrleg_com,np.linalg.inv(j2)),x2_d_dot_))
+
+        j_total = np.zeros((6,6))
+        j_total[0:3,0:6] = j_com_psem_
+        j_total[3:6,0:6] = -j1_w
+        
+        c_total = np.zeros(6)
+        c_total[0:3] = c_dot_psem_
+        desired_leg_q_dot = np.zeros(12)
+        desired_leg_q_dot[0:6] = np.matmul(scipy.linalg.pinv2(j_total),c_total)
+        desired_leg_q_dot[6:12] = np.matmul(np.linalg.inv(j2),np.add(x2_d_dot_, np.matmul(np.matmul(adjoint_21,j1),desired_leg_q_dot[0:6])))
+
+        leg_qs[time + 1, :] = leg_qs[time, : ] + desired_leg_q_dot/float(hz)
+        
+    else:
+        r_c1 = np.subtract(COM_tran_cur, RF_tran_cur)
+        skew_r_c1 = skew(r_c1)
+        adjoint_ = np.zeros((6,6))
+        adjoint_[0:3, 0:3] = PELV_rot
+        adjoint_[3:6, 3:6] = PELV_rot
+        j1 = np.matmul(adjoint_,RF_j[:,12:18])
+        j2 = np.matmul(adjoint_,LF_j[:,6:12])
+
+        j1_v = j1[0:3,0:6]
+        j1_w = j1[3:6,0:6]
+
+        skew_r2_r1 = skew(np.matmul(PELV_rot, np.subtract(RF_tran_cur,LF_tran_cur)))
+        adjoint_21 = np.identity(6)
+        adjoint_21[0:3, 3:6] = skew_r2_r1
+
+        #err_foot = np.subtract(lfoot[time,:], LF_tran_cur)
+        err_foot = np.zeros(3)
+        err_com = np.zeros(3)
+        #err_com[0] = com_refx[time] - COM_tran_cur[0] 
+        #err_com[1] = com_refy[time] - COM_tran_cur[1]
+        #err_com[2] = - COM_tran_cur[2]
+
+        x2_d_dot_ = np.zeros(6)
+        x2_d_dot_[0:3] = np.add(lfootd[time,0:3], err_foot) 
+
+        jlleg_com = Jcom[0:3, 6:12]
+        jrleg_com = Jcom[0:3, 12:18]
+        j_com_psem_ = np.add(np.add(np.add(-j1_v, np.matmul(skew_r_c1,j1_w)), jrleg_com), np.matmul(np.matmul(np.matmul(jlleg_com, np.linalg.inv(j2)),adjoint_21),j1))
+        
+        desired_u_dot = np.zeros(3)
+        desired_u_dot[0] = com_refdx[time] + 0.8 * err_com[0]
+        desired_u_dot[1] = com_refdy[time] + 0.8 * err_com[1]
+        desired_u_dot[2] = 0.0 + 0.8 * err_com[2]
+        
+        c_dot_psem_ = np.subtract(desired_u_dot,np.matmul(np.matmul(jlleg_com,np.linalg.inv(j2)),x2_d_dot_))
+       
+        j_total = np.zeros((6,6))
+        j_total[0:3,0:6] = j_com_psem_
+        j_total[3:6,0:6] = -j1_w
+        
+
+        c_total = np.zeros(6)
+        c_total[0:3] = c_dot_psem_
+        desired_leg_q_dot = np.zeros(12)
+        desired_leg_q_dot[6:12] = np.matmul(scipy.linalg.pinv2(j_total),c_total)
+        desired_leg_q_dot[0:6] = np.matmul(np.linalg.inv(j2),np.add(x2_d_dot_, np.matmul(np.matmul(adjoint_21,j1),desired_leg_q_dot[6:12])))
+
+        leg_qs[time + 1, :] = leg_qs[time, : ] + desired_leg_q_dot/float(hz)
+        
+       
 def modelInitialize():
-    global model, foot_distance, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, q_init, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, LF_rot_init, RF_rot_init, LF_tran_init, RF_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command
-    model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands_light.urdf",pinocchio.JointModelFreeFlyer())      
+    global model, foot_distance, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, q_init, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, LF_rot_init, RF_rot_init, LF_tran_init, RF_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command, robotAginit, COM_tran_init
+    #model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands_hipheavy.urdf",pinocchio.JointModelFreeFlyer())     
+    model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())     
+    #model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands_footheavy.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
     RFframe_id = model.getFrameId("R_Foot_Link")
@@ -1209,7 +1376,7 @@ def modelInitialize():
     q = pinocchio.randomConfiguration(model)
     q_command = pinocchio.randomConfiguration(model)
     #q_init = [0.0, 0.0, 0.7457, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
-    q_init = [0.0, 0.0, 0.814175, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.57, 1.3, -0.73, 0.0, 0.0, 0.0, -0.57, 1.3, -0.73, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
+    q_init = [0.0, 0.0, 0.814175, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
     for i in range(0, len(q)):
         q[i] = q_init[i]
         q_command[i] = q_init[i]
@@ -1229,6 +1396,7 @@ def modelInitialize():
     pinocchio.updateGlobalPlacements(model,data)
     pinocchio.computeJointJacobians(model, data, q)
     pinocchio.computeMinverse(model, data, q)
+    pinocchio.centerOfMass(model,data,False)
 
     LF_tran = data.oMi[LFjoint_id].translation
     RF_tran = data.oMi[RFjoint_id].translation
@@ -1247,6 +1415,7 @@ def modelInitialize():
     HLR_rot_init = data.oMi[LHjoint_id].rotation
     HRR_rot_init = data.oMi[RHjoint_id].rotation
 
+    COM_tran_init = data.com[0]
     PELV_tran_init = np.add(data.oMi[PELVjoint_id].translation, model.inertias[PELVjoint_id].lever)
     CPELV_tran_init = data.oMi[PELVjoint_id].translation 
     PELV_rot_init = data.oMi[PELVjoint_id].rotation
@@ -1254,7 +1423,7 @@ def modelInitialize():
     foot_distance = LF_tran_init - RF_tran_init
 
 def modelUpdate(q_desired, qdot_desired, qddot_desired):
-    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robotW, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur, COM_tran_cur, RFc_tran_cur, LFc_tran_cur, robotWinv, robotCAM
+    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robotW, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur, COM_tran_cur, RFc_tran_cur, LFc_tran_cur, robotWinv, robotCAM, Jcom
     pinocchio.forwardKinematics(model, data, q_desired, qdot_desired, qddot_desired)
     pinocchio.updateFramePlacements(model,data)
     pinocchio.updateGlobalPlacements(model,data)
@@ -1277,8 +1446,9 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
     pinocchio.computeMinverse(model,data,q_desired)
     pinocchio.centerOfMass(model,data,False)
     pinocchio.computeCentroidalMomentum(model,data, q_desired, qdot_desired)
-    robotCAM = data.hg
-
+    Jcom = pinocchio.jacobianCenterOfMass(model,data,q_desired,True)
+    
+    robotCAM = data.hg.angular
     COM_tran_cur = data.com[0]
     RFc_tran_cur = data.oMf[RFcframe_id].translation
     LFc_tran_cur = data.oMf[LFcframe_id].translation
@@ -1325,12 +1495,12 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
     robotJcinvT = np.matmul(np.matmul(robotLambdac, robotJac),Minv)
     robotNc = np.subtract(np.identity(model.nv),np.matmul(np.transpose(robotJac),robotJcinvT))
     
-    robotPc = np.matmul(robotJcinvT,G)
     robotW = np.matmul(Minv[6:model.nq-1,0:model.nq],robotNc[0:model.nq-1,6:6+33])
     robotWinv = scipy.linalg.pinv2(robotW)
     
     winvCalc(robotW)
     
+    robotPc = np.matmul(robotJcinvT,G)
     robotmuc = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac,Minv),b),np.matmul(robotdJac,qdot_desired)))
     robothc = np.matmul(np.transpose(robotJac),np.add(robotmuc, robotPc))
 
@@ -1468,8 +1638,14 @@ def estimateContactForce(time, qddot_desired):
         robotContactForce[0:6] = np.subtract(np.subtract(np.matmul(robotJcinvT,robotTorque), robotPc),robotmuc)
         robotContactForce[6:12] = np.zeros(6)  
 
-    f2.write('%f %f %f %f %f %f %f %f' % (time, contactState, robotContactForce[0], robotContactForce[1], robotContactForce[2], robotContactForce[3], robotContactForce[4], robotContactForce[5]))
-    f2.write("\n")
+    #print(np.shape(robotdJac))
+    #robotPc1 = np.matmul(robotJcinvT[0:6,12:18],G[12:18])
+    #robotmuc1 = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac[0:6,12:18],Minv[12:18,12:18]),b[12:18]),np.matmul(robotdJac[0:6,12:18],qdot_command[12:18])))
+ 
+    #robotContactForce1 = np.subtract(np.subtract(np.matmul(robotJcinvT[0:6,12:18],robotTorque[12:18]), robotPc1),robotmuc1)
+    #robotContactForce1 = np.matmul(robotJcinvT[0:12,12:18],robotTorque[12:18])
+    #f2.write('%f %f %f %f %f %f %f %f' % (time, contactState, robotContactForce1[0], robotContactForce1[1], robotContactForce1[2], robotContactForce1[3], robotContactForce1[4], robotContactForce1[5]))
+    #f2.write("\n")
        
 def calMargin():
     global contact_margin
@@ -1530,24 +1706,35 @@ def talker():
         PELV_tran[2] = PELV_tran_init[2]
 
         inverseKinematics(i, LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
-
+        f.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f ' % (i, current_step_num, com_refx[i],zmp_refx[i], com_refy[i],zmp_refy[i],com_refdy[i], com_refddy[i],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5], leg_qdots[i,0], leg_qdots[i,1], leg_qdots[i,2], leg_qdots[i,3], leg_qdots[i,4], leg_qdots[i,5], leg_qddots[i,0], leg_qddots[i,1], leg_qddots[i,2], leg_qddots[i,3], leg_qddots[i,4], leg_qddots[i,5]))
+        f.write("\n")
     #range(0, int(total_tick)):
     for i in range(0, int(total_tick)): #range(int(t_total + t_temp + 2), int(t_totfal * (foot_step_number - 2) + t_temp)): 
         contactState = phase_variable[i]
         jointUpdate(i)
         modelUpdate(q_command,qdot_command,qddot_command)
+        comJacobianinverseKinematics(i, LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
+        
         phaseUpdata(i)
-        if(i>1501 and i < 4000):
+        #if(i>1541 and i < 1961):
+        if(i>1441 and i <1641):
             estimateContactForce(i, qddot_command)
-            #if(np.abs(robotContactForce[2]) < 1000) and (np.abs(robotContactForce[8]) < 1000) and (np.abs(robotContactForce[2]) > -1000) and (np.abs(robotContactForce[8]) > -1000) and (np.abs(robotContactForce[0]) > -1000) and (np.abs(robotContactForce[6]) > -1000):
-            f.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f ' % (i, current_step_num, com_refx[i],com_refdx[i], com_refddx[i],com_refy[i],com_refdy[i], com_refddy[i],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5], leg_qdots[i,0], leg_qdots[i,1], leg_qdots[i,2], leg_qdots[i,3], leg_qdots[i,4], leg_qdots[i,5], leg_qddots[i,0], leg_qddots[i,1], leg_qddots[i,2], leg_qddots[i,3], leg_qddots[i,4], leg_qddots[i,5]))
-            f.write("\n")
-            calMargin()    
-            f1.write('%f %f %f %f %f %f %f %f %f %f %f' % (i, contact_margin[0], contact_margin[1], contact_margin[2], contact_margin[3], contact_margin[4], contact_margin[5], contact_margin[6], contact_margin[7], contact_margin[8], contact_margin[9]))
+                    #if(np.abs(robotContactForce[2]) < 1000) and (np.abs(robotContactForce[8]) < 1000) and (np.abs(robotContactForce[2]) > -1000) and (np.abs(robotContactForce[8]) > -1000) and (np.abs(robotContactForce[0]) > -1000) and (np.abs(robotContactForce[6]) > -1000):
+                
+                
+                #if(contactState != 1):
+                #    print(robotJcinvT)
+
+            calMargin()  
+            f2.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f' % (i, contact_margin[0], contact_margin[1], contact_margin[2], contact_margin[3], contact_margin[4], robotCAM[0], robotCAM[1], robotCAM[2], robotContactForce[0], robotContactForce[1], robotContactForce[2], robotContactForce[3], robotContactForce[4], robotContactForce[5]))
+            f2.write("\n")
+            f1.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f' % (i, contactState, com_refx[i], com_refy[i], COM_tran_cur[0], COM_tran_cur[1], rfoot[i,2], lfoot[i,2], LF_tran_cur[0], LF_tran_cur[2],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5]))
             f1.write("\n")
+    
     f.close()
     f1.close()
     f2.close()
 
 if __name__=='__main__':
     talker()
+
