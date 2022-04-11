@@ -175,7 +175,7 @@ def walkingSetup():
     yaw_direction = 0.00
     step_length = 0.2
     
-    velocity_control = 0.4
+    velocity_control = 1.0
     t_total_t = 1.0 * velocity_control
     t_temp_t = 2.0
     t_double = 0.2 * velocity_control
@@ -525,7 +525,7 @@ def cpGenerator():
    
     for i in range(0,(int(t_total * (foot_step_number + 1) + t_temp - 1))):
         time[i] = i
-        '''
+        
         if i < t_temp - 1:
             current_step = int(i / (t_temp + t_total))
             if t_temp - t_total <= i:
@@ -564,19 +564,6 @@ def cpGenerator():
             zmp_refx[i] = (capturePoint_refx[i - 1]) - (capturePoint_refx[i] - capturePoint_refx[i - 1]) * hz / (wn)
             zmp_refy[i] = (capturePoint_refy[i - 1]) - (capturePoint_refy[i] - capturePoint_refy[i - 1]) * hz / (wn)
     
-        for i in range(0,(int(t_total * (foot_step_number + 1) + t_temp - 1))):
-            if((i % 50) > 40 or (i % 50) < 1) and i < 790:
-                if(i % 50 == 41):
-                    zmpxs = int(i)
-                    zmpxf = int(i) + 9
-                    zmpxsd = zmp_refx[zmpxs]
-                    zmpxfd = zmp_refx[zmpxf]
-                    zmpysd = zmp_refy[zmpxs]
-                    zmpyfd = zmp_refy[zmpxf]
-
-                if(i > 30):
-                    zmp_refx[i] = (zmpxfd - zmpxsd)/9.0 * (i - zmpxs) + zmpxsd
-                    zmp_refy[i] = (zmpyfd - zmpysd)/9.0 * (i - zmpxs) + zmpysd
 
         '''    
         if (i>t_temp):
@@ -629,6 +616,7 @@ def cpGenerator():
             zmp_refx[i] = PELV_tran_init[0]
             zmp_refy[i] = PELV_tran_init[1]     
     current_step_num = 0
+    '''
     
     
 def calculatePreviewControlParams(A, B, C, Q, R, N):
@@ -1737,4 +1725,3 @@ def talker():
 
 if __name__=='__main__':
     talker()
-
