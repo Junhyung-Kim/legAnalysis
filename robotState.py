@@ -2,6 +2,8 @@
 from __future__ import print_function
 from tempfile import tempdir
 import pinocchio
+from pinocchio.utils import npToTuple
+from pinocchio.rpy import matrixToRpy, rpyToMatrix
 import sys
 import numpy as np
 import math
@@ -170,10 +172,10 @@ def walkingSetup():
     global x_direction, y_direction, yaw_direction, step_length, hz, total_tick, t_total_t, t_start_real, t_temp_t, t_double, t_rest_1, t_rest_2, t_start, t_total, t_temp, t_last, t_double_1, t_double_2
     global zc, wn, current_step_num, ref_zmp, ref_com, time, total_tick, phase_variable, lfoot, rfoot, foot_height, foot_step_dir, A_lipm, B_lipm, C_lipm, K_lipm, f_lipm, Ks_lipm, Kx_lipm, G_lipm, N_preview
     hz = 500
-    x_direction = 1.0
+    x_direction = 0.5
     y_direction = 0.00
     yaw_direction = 0.00
-    step_length = 0.2
+    step_length = 0.1
     
     velocity_control = 1.0
     t_total_t = 1.0 * velocity_control
@@ -1250,14 +1252,22 @@ def comJacobianinverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c
         adjoint_21[0:3, 3:6] = skew_r2_r1
 
         err_foot = np.zeros(3)
-        #err_foot = np.subtract(rfoot[time,:], RF_tran_cur)
+      #  err_foot = np.subtract(rfoot[time,:], RF_tran_cur)
         err_com = np.zeros(3)
-        #err_com[0] = com_refx[time] - COM_tran_cur[0]
-        #err_com[1] = com_refy[time] - COM_tran_cur[1]
-        #err_com[2] = - COM_tran_cur[2]
+      #  err_com[0] = com_refx[time] - COM_tran_cur[0]
+      #  err_com[1] = com_refy[time] - COM_tran_cur[1]
+      #  err_com[2] = - COM_tran_cur[2]
+        
+        I =  np.identity(3)
+      #  err_com_w = matrixToRpy(np.matmul(I, np.transpose(PELV_rot_cur)))
+      #  err_foot_w = matrixToRpy(np.matmul(I, np.transpose(RF_rot_cur)))
+
+        err_foot_w = np.zeros(3)
+        err_com_w = np.zeros(3)
 
         x2_d_dot_ = np.zeros(6)
         x2_d_dot_[0:3] = np.add(rfootd[time,0:3], 0.8 * err_foot)
+        x2_d_dot_[3:6] = 0.8 * err_foot_w
 
         jlleg_com = Jcom[0:3, 6:12]
         jrleg_com = Jcom[0:3, 12:18]
@@ -1267,6 +1277,7 @@ def comJacobianinverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c
         desired_u_dot[0] = com_refdx[time] + 0.8 * err_com[0]
         desired_u_dot[1] = com_refdy[time] + 0.8 * err_com[1]
         desired_u_dot[2] = 0.0 + 0.8 * err_com[2]
+        desired_w_dot = 0.8 * err_com_w
 
         c_dot_psem_ = np.subtract(desired_u_dot,np.matmul(np.matmul(jrleg_com,np.linalg.inv(j2)),x2_d_dot_))
 
@@ -1276,11 +1287,16 @@ def comJacobianinverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c
         
         c_total = np.zeros(6)
         c_total[0:3] = c_dot_psem_
+        c_total[3:6] = desired_w_dot
         desired_leg_q_dot = np.zeros(12)
         desired_leg_q_dot[0:6] = np.matmul(scipy.linalg.pinv2(j_total),c_total)
         desired_leg_q_dot[6:12] = np.matmul(np.linalg.inv(j2),np.add(x2_d_dot_, np.matmul(np.matmul(adjoint_21,j1),desired_leg_q_dot[0:6])))
 
-        leg_qs[time + 1, :] = leg_qs[time, : ] + desired_leg_q_dot/float(hz)
+        if(time == 0):
+            leg_qs[time, :] = q_init[7:19]
+            leg_qs[time + 1, :] = q_init[7:19]
+        else:
+            leg_qs[time + 1, :] = leg_qs[time, : ] + desired_leg_q_dot/float(hz)
         
     else:
         r_c1 = np.subtract(COM_tran_cur, RF_tran_cur)
@@ -1301,12 +1317,20 @@ def comJacobianinverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c
         #err_foot = np.subtract(lfoot[time,:], LF_tran_cur)
         err_foot = np.zeros(3)
         err_com = np.zeros(3)
+        
+        err_foot_w = np.zeros(3)
+        err_com_w = np.zeros(3)
         #err_com[0] = com_refx[time] - COM_tran_cur[0] 
         #err_com[1] = com_refy[time] - COM_tran_cur[1]
         #err_com[2] = - COM_tran_cur[2]
 
+        I =  np.identity(3)
+        #err_com_w = matrixToRpy(np.matmul(I, np.transpose(PELV_rot_cur)))
+        #err_foot_w = matrixToRpy(np.matmul(I, np.transpose(LF_rot_cur)))
+
         x2_d_dot_ = np.zeros(6)
-        x2_d_dot_[0:3] = np.add(lfootd[time,0:3], err_foot) 
+        x2_d_dot_[0:3] = np.add(lfootd[time,0:3], 0.8 * err_foot) 
+        x2_d_dot_[3:6] = 0.8 * err_foot_w
 
         jlleg_com = Jcom[0:3, 6:12]
         jrleg_com = Jcom[0:3, 12:18]
@@ -1317,6 +1341,8 @@ def comJacobianinverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c
         desired_u_dot[1] = com_refdy[time] + 0.8 * err_com[1]
         desired_u_dot[2] = 0.0 + 0.8 * err_com[2]
         
+        desired_w_dot = 0.8 * err_com_w
+        
         c_dot_psem_ = np.subtract(desired_u_dot,np.matmul(np.matmul(jlleg_com,np.linalg.inv(j2)),x2_d_dot_))
        
         j_total = np.zeros((6,6))
@@ -1326,22 +1352,27 @@ def comJacobianinverseKinematics(time, LF_rot_c, RF_rot_c, PELV_rot_c, LF_tran_c
 
         c_total = np.zeros(6)
         c_total[0:3] = c_dot_psem_
+        c_total[3:6] = desired_w_dot
         desired_leg_q_dot = np.zeros(12)
         desired_leg_q_dot[6:12] = np.matmul(scipy.linalg.pinv2(j_total),c_total)
         desired_leg_q_dot[0:6] = np.matmul(np.linalg.inv(j2),np.add(x2_d_dot_, np.matmul(np.matmul(adjoint_21,j1),desired_leg_q_dot[6:12])))
 
-        leg_qs[time + 1, :] = leg_qs[time, : ] + desired_leg_q_dot/float(hz)
-        
+        if(time == 0):
+            leg_qs[time, :] = q_init[7:19]
+            leg_qs[time + 1, :] = q_init[7:19]
+        else:
+            leg_qs[time + 1, :] = leg_qs[time, : ] + desired_leg_q_dot/float(hz)
        
 def modelInitialize():
-    global model, foot_distance, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, q_init, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, LF_rot_init, RF_rot_init, LF_tran_init, RF_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command, robotAginit, COM_tran_init
+    global model, foot_distance, data, LFframe_id, RFframe_id, PELVjoint_id, LHjoint_id, RHjoint_id, LFjoint_id, q_init, RFjoint_id, LFcframe_id, RFcframe_id, q, qdot, qddot, LF_tran, RF_tran, PELV_tran, LF_rot, RF_rot, PELV_rot, qdot_z, qddot_z, HRR_rot_init, HLR_rot_init, HRR_tran_init, HLR_tran_init, LF_rot_init, RF_rot_init, LF_tran_init, RF_tran_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init, q_command, qdot_command, qddot_command, robotAginit, COM_tran_init, virtual_init, TranFVi, TranFRi, TranFLi, TranVRi, TranVLi
     #model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands_hipheavy.urdf",pinocchio.JointModelFreeFlyer())     
     model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands.urdf",pinocchio.JointModelFreeFlyer())     
     #model = pinocchio.buildModelFromUrdf("/home/jhk/legAnalysis/dyros_tocabi_with_redhands_footheavy.urdf",pinocchio.JointModelFreeFlyer())      
    
     LFframe_id = model.getFrameId("L_Foot_Link")
     RFframe_id = model.getFrameId("R_Foot_Link")
-
+    PELVframe_id = model.getFrameId("Pelvis_Link")
+    
     PELVjoint_id = model.getJointId("root_joint")
     LHjoint_id = model.getJointId("L_HipYaw_Joint")
     RHjoint_id = model.getJointId("R_HipYaw_Joint")
@@ -1363,8 +1394,8 @@ def modelInitialize():
     data = model.createData()
     q = pinocchio.randomConfiguration(model)
     q_command = pinocchio.randomConfiguration(model)
-    #q_init = [0.0, 0.0, 0.7457, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
-    q_init = [0.0, 0.0, 0.814175, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
+    q_init = [0.0, 0.0, 0.7457, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, -0.606, 1.572, -0.92, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
+    #q_init = [0.0, 0.0, 0.814175, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, -0.55, 1.26, -0.71, 0.0, 0.0, 0.0, 0.0, 0.2, 0.6, 1.5, -1.47, -1.0, 0.0, -1.0, 0.0, 0.0, 0.0, -0.2, -0.6, -1.5, 1.47, 1.0, 0.0, 1.0, 0.0]
     for i in range(0, len(q)):
         q[i] = q_init[i]
         q_command[i] = q_init[i]
@@ -1394,6 +1425,8 @@ def modelInitialize():
     PELV_tran = np.add(data.oMi[PELVjoint_id].translation, model.inertias[PELVjoint_id].lever)
     PELV_rot = data.oMi[PELVjoint_id].rotation
 
+    virtual_init = data.oMi[PELVjoint_id].translation
+
     LF_tran_init = data.oMi[LFjoint_id].translation
     RF_tran_init = data.oMi[RFjoint_id].translation
     HLR_tran_init = data.oMi[LHjoint_id].translation
@@ -1408,10 +1441,30 @@ def modelInitialize():
     CPELV_tran_init = data.oMi[PELVjoint_id].translation 
     PELV_rot_init = data.oMi[PELVjoint_id].rotation
 
+    virtual_init = data.oMf[PELVjoint_id].translation
+
     foot_distance = LF_tran_init - RF_tran_init
 
+    TranFVi = np.zeros((4,4))
+    TranFVi[0:3,0:3] = np.identity(3)
+    TranFVi[0:3,3] = PELV_tran
+    TranFVi[3,3] = 1.0
+
+    TranFRi = np.zeros((4,4))
+    TranFRi[0:3,0:3] = RF_rot_init
+    TranFRi[0:3,3] = RF_tran_init
+    TranFRi[3,3] = 1.0
+
+    TranFLi = np.zeros((4,4))
+    TranFLi[0:3,0:3] = LF_rot_init
+    TranFLi[0:3,3] = LF_tran_init
+    TranFLi[3,3] = 1.0
+
+    TranVRi = np.matmul(np.linalg.inv(TranFVi),TranFRi)
+    TranVLi = np.matmul(np.linalg.inv(TranFVi),TranFLi)
+
 def modelUpdate(q_desired, qdot_desired, qddot_desired):
-    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robotW, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur, COM_tran_cur, RFc_tran_cur, LFc_tran_cur, robotWinv, robotCAM, Jcom
+    global contactnum, M, G, COR, Minv, b, robotJac, robotdJac, LF_j, RF_j, LF_cj, RF_cj, LF_cdj, RF_cdj, robotLambdac, robotJcinvT, robotNc, robotPc, robotmuc, robotW, robothc, LF_tran_cur, RF_tran_cur, PELV_tran_cur, COM_tran_cur, RFc_tran_cur, LFc_tran_cur, robotWinv, robotCAM, Jcom, LF_rot_cur, RF_rot_cur, PELV_rot_cur, virtual_cur, virtual_dcur, virtual_ddcur, TranFV, TranFR, TranFL, TranVR, TranVL
     pinocchio.forwardKinematics(model, data, q_desired, qdot_desired, qddot_desired)
     pinocchio.updateFramePlacements(model,data)
     pinocchio.updateGlobalPlacements(model,data)
@@ -1492,13 +1545,119 @@ def modelUpdate(q_desired, qdot_desired, qddot_desired):
     robotmuc = np.matmul(robotLambdac,np.subtract(np.matmul(np.matmul(robotJac,Minv),b),np.matmul(robotdJac,qdot_desired)))
     robothc = np.matmul(np.transpose(robotJac),np.add(robotmuc, robotPc))
 
-def jointUpdate(time):
-    q_command[0] = com_refx[time] - com_refx[0]
-    qdot_command[0] = com_refdx[time]
-    qddot_command[0] = com_refddx[time]
-    q_command[1] = com_refy[time]
-    qdot_command[1] = com_refdy[time]
-    qddot_command[1] = com_refddy[time]
+    virtual_cur = data.oMf[PELVjoint_id].translation
+    virtual_dcur = data.ov[PELVjoint_id].linear
+    virtual_ddcur = data.oa[PELVjoint_id].linear
+    
+    TranFV = np.zeros((4,4))
+    TranFV[0:3,0:3] = np.identity(3)
+    TranFV[0:3,3] = PELV_tran_cur
+    TranFV[3,3] = 1.0
+
+    TranFR = np.zeros((4,4))
+    TranFR[0:3,0:3] = RF_rot_cur
+    TranFR[0:3,3] = RF_tran_cur
+    TranFR[3,3] = 1.0
+
+    TranFL = np.zeros((4,4))
+    TranFL[0:3,0:3] = LF_rot_cur
+    TranFL[0:3,3] = LF_tran_cur
+    TranFL[3,3] = 1.0
+
+    TranVR = np.matmul(np.linalg.inv(TranFV),TranFR)
+    TranVL = np.matmul(np.linalg.inv(TranFV),TranFL)
+
+def jointUpdateLocal(time):
+    global PELV_tran_prev, PELV_tran_dot, V_tran, Vdot_tran, Vddot_tran, V_tranG, TranVRi, TranVLi
+    if(time == 0):
+        PELV_tran_prev = np.zeros(3)
+        PELV_tran_dot = np.zeros(3)
+        V_tran = np.zeros(3)
+        Vdot_tran = np.zeros(3)
+        Vddot_tran = np.zeros(3)
+        V_tranG = np.zeros(3)
+
+    q_command[0] = 0.0#com_refx[time]-com_refx[0]
+    qdot_command[0] = 0.0
+    qddot_command[0] = 0.0
+    q_command[1] = 0.0
+    qdot_command[1] = 0.0
+    qddot_command[1] = 0.0
+
+    if(time != 0):
+        if(current_step_num == 0):
+            if(foot_step[current_step_num,6] == 1):
+                V_tran[0] = (TranVLi[0:3,3] - TranVL[0:3,3])[0]
+                V_tran[1] = (TranVLi[0:3,3] - TranVL[0:3,3])[1]
+            else:
+                V_tran[0] = (TranVRi[0:3,3] - TranVR[0:3,3])[0]
+                V_tran[1] = (TranVRi[0:3,3] - TranVR[0:3,3])[1]
+
+            if(time == t_last):
+                TranFVi = np.zeros((4,4))
+                TranFVi[0:3,0:3] = np.identity(3)
+                TranFVi[0:3,3] = PELV_tran_cur
+                TranFVi[3,3] = 1.0
+
+                TranFRi = np.zeros((4,4))
+                TranFRi[0:3,0:3] = RF_rot_cur
+                TranFRi[0:3,3] = RF_tran_cur
+                TranFRi[3,3] = 1.0
+
+                TranFLi = np.zeros((4,4))
+                TranFLi[0:3,0:3] = LF_rot_cur
+                TranFLi[0:3,3] = LF_tran_cur
+                TranFLi[3,3] = 1.0
+
+                TranVRi = np.matmul(np.linalg.inv(TranFVi),TranFRi)
+                TranVLi = np.matmul(np.linalg.inv(TranFVi),TranFLi)
+                V_tranG[0] = V_tran[0]
+                V_tranG[1] = V_tran[1]
+        else:
+            if(foot_step[current_step_num,6] == 1):
+                V_tran[0] = (TranVLi[0:3,3] - TranVL[0:3,3])[0] + V_tranG[0]
+                V_tran[1] = (TranVLi[0:3,3] - TranVL[0:3,3])[1] + V_tranG[1]
+            else:
+                V_tran[0] = (TranVRi[0:3,3] - TranVR[0:3,3])[0] + V_tranG[0]
+                V_tran[1] = (TranVRi[0:3,3] - TranVR[0:3,3])[1] + V_tranG[1]
+
+            if(time == t_last):
+                TranFVi = np.zeros((4,4))
+                TranFVi[0:3,0:3] = np.identity(3)
+                TranFVi[0:3,3] = PELV_tran_cur
+                TranFVi[3,3] = 1.0
+
+                TranFRi = np.zeros((4,4))
+                TranFRi[0:3,0:3] = RF_rot_cur
+                TranFRi[0:3,3] = RF_tran_cur
+                TranFRi[3,3] = 1.0
+
+                TranFLi = np.zeros((4,4))
+                TranFLi[0:3,0:3] = LF_rot_cur
+                TranFLi[0:3,3] = LF_tran_cur
+                TranFLi[3,3] = 1.0
+
+                TranVRi = np.matmul(np.linalg.inv(TranFVi),TranFRi)
+                TranVLi = np.matmul(np.linalg.inv(TranFVi),TranFLi)
+                V_tranG[0] = V_tran[0]
+                V_tranG[1] = V_tran[1]
+        
+        Vdot_tran[0] = (V_tran[0] - PELV_tran_prev[0]) * float(hz)#com_refdx[time]#virtual_dcur[0]#np.subtract(PELV_tran_cur[0], PELV_tran_prev[0]) *  float(hz)
+        Vddot_tran[0] = (Vdot_tran[0] - PELV_tran_dot[0]) * float(hz)#com_refddx[time]#virtual_ddcur[0]#np.subtract(qdot_command[0], PELV_tran_dot[0]) * float(hz)
+        Vdot_tran[1] = (V_tran[1] - PELV_tran_prev[1]) * float(hz)#com_refdy[time]#virtual_dcur[1]#np.subtract(PELV_tran_cur[1], PELV_tran_prev[1]) *  float(hz)
+        Vddot_tran[1] = (Vdot_tran[1] - PELV_tran_dot[1]) * float(hz)#com_refddy[time]#virtual_ddcur[1]#np.subtract(qdot_command[1], PELV_tran_dot[1]) * float(hz)
+        
+    if(time == 0):
+        leg_qs[time,:] = q_init[7:19]
+        PELV_tran_prev[0] = V_tran[0]
+        PELV_tran_dot[0] = Vdot_tran[0]
+        PELV_tran_prev[1] = V_tran[1]
+        PELV_tran_dot[1] = Vdot_tran[1]
+    else:
+        PELV_tran_prev[1] = V_tran[1]
+        PELV_tran_dot[1] = Vdot_tran[1]
+        PELV_tran_prev[1] = V_tran[1]
+        PELV_tran_dot[1] = Vdot_tran[1]
 
     for i in range(7, 19):
         q_command[i] = leg_qs[time, i-7]
@@ -1514,7 +1673,56 @@ def jointUpdate(time):
         qdot_command[i] = 0.0
         qddot_command[i] = 0.0
 
-def phaseUpdata(time):
+def jointUpdateGlobal(time):
+    global PELV_tran_prev, PELV_tran_dot
+    if(time == 0):
+        PELV_tran_prev = np.zeros(3)
+        PELV_tran_dot = np.zeros(3)
+
+    q_command[0] = 0.0#TranVRi[0,3] - TranVR[0,3]
+    qdot_command[0] = 0.0
+    qddot_command[0] = 0.0
+    q_command[1] = 0.0#TranVRi[1,3] - TranVR[1,3]
+    qdot_command[1] = 0.0
+    qddot_command[1] = 0.0
+    
+    if(time != 0):
+        q_command[0] = V_tran[0]
+        q_command[1] = V_tran[1]
+
+        #qdot_command[0] = (q_command[0] - PELV_tran_prev[0]) * float(hz)#com_refdx[time]#virtual_dcur[0]#np.subtract(PELV_tran_cur[0], PELV_tran_prev[0]) *  float(hz)
+        #qddot_command[0] = (qdot_command[0] - PELV_tran_dot[0]) * float(hz)#com_refddx[time]#virtual_ddcur[0]#np.subtract(qdot_command[0], PELV_tran_dot[0]) * float(hz)
+        #qdot_command[1] = (q_command[1] - PELV_tran_prev[1]) * float(hz)#com_refdy[time]#virtual_dcur[1]#np.subtract(PELV_tran_cur[1], PELV_tran_prev[1]) *  float(hz)
+        #qddot_command[1] = (qdot_command[1] - PELV_tran_dot[1]) * float(hz)#com_refddy[time]#virtual_ddcur[1]#np.subtract(qdot_command[1], PELV_tran_dot[1]) * float(hz)
+        
+    if(time == 0):
+        leg_qs[time,:] = q_init[7:19]
+        PELV_tran_prev[0] = q_command[0]
+        PELV_tran_dot[0] = qdot_command[0]
+        PELV_tran_prev[1] = q_command[1]
+        PELV_tran_dot[1] = qdot_command[1]
+    else:
+        PELV_tran_prev[1] = q_command[1]
+        PELV_tran_dot[1] = qdot_command[1]
+        PELV_tran_prev[1] = q_command[1]
+        PELV_tran_dot[1] = qdot_command[1]
+
+    for i in range(7, 19):
+        q_command[i] = leg_qs[time, i-7]
+        
+    for i in range(19,40):
+        q_command[i] = q_init[i]
+
+    for i in range(6, 18):
+        qdot_command[i] = leg_qdots[time, i-6]
+        qddot_command[i] = leg_qddots[time, i-6]
+
+    for i in range(18,39):
+        qdot_command[i] = 0.0
+        qddot_command[i] = 0.0
+    
+
+def phaseUpdate(time):
     global t_last, t_start_real, t_start, phaseChange, phaseChange1, double2Single_pre, double2Single, single2Double_pre, single2Double, current_step_num
     if(time == 0):
         current_step_num = 0
@@ -1591,7 +1799,6 @@ def estimateContactForce(time, qddot_desired):
     if(time == 1501 or time == 1500 or time == 4000 or time == 5001 or time == 1001):
         print(time)
     else:
-        
     '''
 
     robotContactForce = pinocchio.utils.zero(12)
@@ -1694,30 +1901,39 @@ def talker():
         PELV_tran[2] = PELV_tran_init[2]
 
         inverseKinematics(i, LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
-        f.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f ' % (i, current_step_num, com_refx[i],zmp_refx[i], com_refy[i],zmp_refy[i],com_refdy[i], com_refddy[i],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5], leg_qdots[i,0], leg_qdots[i,1], leg_qdots[i,2], leg_qdots[i,3], leg_qdots[i,4], leg_qdots[i,5], leg_qddots[i,0], leg_qddots[i,1], leg_qddots[i,2], leg_qddots[i,3], leg_qddots[i,4], leg_qddots[i,5]))
-        f.write("\n")
-    #range(0, int(total_tick)):
+       
     for i in range(0, int(total_tick)): #range(int(t_total + t_temp + 2), int(t_totfal * (foot_step_number - 2) + t_temp)): 
         contactState = phase_variable[i]
-        jointUpdate(i)
+        jointUpdateLocal(i)
         modelUpdate(q_command,qdot_command,qddot_command)
         comJacobianinverseKinematics(i, LF_rot, RF_rot, PELV_rot, LF_tran, RF_tran, PELV_tran, HRR_tran_init, HLR_tran_init, HRR_rot_init, HLR_rot_init, PELV_tran_init, PELV_rot_init, CPELV_tran_init)
         
-        phaseUpdata(i)
-        #if(i>1541 and i < 1961):
-        if(i>1441 and i <1641):
-            estimateContactForce(i, qddot_command)
-                    #if(np.abs(robotContactForce[2]) < 1000) and (np.abs(robotContactForce[8]) < 1000) and (np.abs(robotContactForce[2]) > -1000) and (np.abs(robotContactForce[8]) > -1000) and (np.abs(robotContactForce[0]) > -1000) and (np.abs(robotContactForce[6]) > -1000):
-                
-                
-                #if(contactState != 1):
-                #    print(robotJcinvT)
+        f2.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f' % (i, contactState, com_refx[i], com_refy[i], PELV_tran_cur[0], RF_tran_cur[0], V_tran[0], V_tran[1], rfoot[i,2], lfoot[i,2], LF_tran_cur[0], LF_tran_cur[2],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5]))
+        f2.write("\n")
+    
+        jointUpdateGlobal(i)
+        modelUpdate(q_command,qdot_command,qddot_command)
+        '''
+        print(q_command)
+        print(RF_tran_cur - TranVR[0:3,3])
+        print(TranVR[0:3,3])
+        print(TranVRi[0:3,3])
+        print(t_last)
+        '''
+        if(i == 0):
+            robotCAMI = np.zeros(3)
 
-            calMargin()  
-            f2.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f' % (i, contact_margin[0], contact_margin[1], contact_margin[2], contact_margin[3], contact_margin[4], robotCAM[0], robotCAM[1], robotCAM[2], robotContactForce[0], robotContactForce[1], robotContactForce[2], robotContactForce[3], robotContactForce[4], robotContactForce[5]))
-            f2.write("\n")
-            f1.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f' % (i, contactState, com_refx[i], com_refy[i], COM_tran_cur[0], COM_tran_cur[1], rfoot[i,2], lfoot[i,2], LF_tran_cur[0], LF_tran_cur[2],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5]))
-            f1.write("\n")
+        phaseUpdate(i)
+        #if(i>2999 and i <4001):
+        estimateContactForce(i, qddot_command)
+        calMargin()  
+        robotCAMI = np.add(robotCAMI, robotCAM * 0.002)
+        f.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f ' % (i, current_step_num, com_refx[i],zmp_refx[i], com_refy[i],zmp_refy[i],com_refdy[i], com_refddy[i],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5], leg_qdots[i,0], leg_qdots[i,1], leg_qdots[i,2], leg_qdots[i,3], leg_qdots[i,4], leg_qdots[i,5], leg_qddots[i,0], leg_qddots[i,1], leg_qddots[i,2], leg_qddots[i,3], leg_qddots[i,4], leg_qddots[i,5]))
+        f.write("\n")
+        #f2.write('%f %f %f %f %f %f %f %f %f %f %f %f %f' % (i, robotCAMI[0], robotCAMI[1], robotCAMI[2],robotCAM[0], robotCAM[1], robotCAM[2], robotContactForce[0], robotContactForce[1], robotContactForce[2], robotContactForce[3], robotContactForce[4], robotContactForce[5]))            
+        #f2.write("\n")
+        f1.write('%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f' % (i, com_refx[i], com_refy[i], COM_tran_cur[0], COM_tran_cur[1], V_tran[0] - V_tranG[0], V_tranG[0], lfoot[i,0], lfoot[i,2], LF_tran_cur[0], LF_tran_cur[2],leg_qs[i,0], leg_qs[i,1], leg_qs[i,2], leg_qs[i,3], leg_qs[i,4], leg_qs[i,5]))
+        f1.write("\n")
     
     f.close()
     f1.close()
